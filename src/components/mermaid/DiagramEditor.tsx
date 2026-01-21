@@ -65,10 +65,31 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [activeTab, setActiveTab] = useState<'code' | 'history'>('code')
   const [isPanelHovered, setIsPanelHovered] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
   const rendererRef = useRef<MermaidRendererRef>(null)
 
   const { source, layout, theme, hasChanges } = editorState
+
+  // 监听实际应用的主题（包括跟随系统的情况）
+  useEffect(() => {
+    const updateDarkMode = () => {
+      const root = window.document.documentElement
+      setIsDarkMode(root.classList.contains('dark'))
+    }
+
+    // 初始化
+    updateDarkMode()
+
+    // 监听 class 变化
+    const observer = new MutationObserver(updateDarkMode)
+    observer.observe(window.document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     if (currentDiagram) {
@@ -309,7 +330,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
               value={source}
               onChange={handleSourceChange}
               className="h-full border-0 rounded-none"
-              darkMode={settings.theme === 'dark'}
+              darkMode={isDarkMode}
             />
           ) : (
             <div className="h-full overflow-auto p-3 space-y-2">
