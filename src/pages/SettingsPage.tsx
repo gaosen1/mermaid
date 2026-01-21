@@ -23,8 +23,9 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="container max-w-2xl py-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className="h-full overflow-y-auto">
+      <div className="container max-w-2xl py-8 mx-auto">
+        <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">设置</h1>
           <p className="text-muted-foreground">自定义您的应用配置</p>
@@ -208,6 +209,7 @@ export function SettingsPage() {
             </p>
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   )

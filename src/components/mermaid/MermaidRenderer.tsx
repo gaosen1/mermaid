@@ -63,12 +63,10 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
   useEffect(() => {
     scaleRef.current = scale
-    console.log('[Scale更新]', scale)
   }, [scale])
 
   useEffect(() => {
     positionRef.current = position
-    console.log('[Position更新]', position)
   }, [position])
 
   useEffect(() => {
@@ -154,10 +152,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
           const wrapperRect = wrapperRef.current.getBoundingClientRect()
 
-          console.log('[自动居中Effect] 📐 调试信息:')
-          console.log('  - 当前scale:', scale)
-          console.log('  - 当前position:', position)
-
           // 只在初始状态时自动适应容器
           if (scale === 1 && (position.x === 0 || position.y === 0)) {
             // 获取 SVG 的原始尺寸
@@ -167,9 +161,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
             const availableWidth = wrapperRect.width - 32
             const availableHeight = wrapperRect.height - 32
-
-            console.log('  - SVG原始尺寸:', { width: svgWidth, height: svgHeight })
-            console.log('  - Wrapper可用尺寸:', { width: availableWidth, height: availableHeight })
 
             // 计算合适的缩放比例
             const scaleX = availableWidth / svgWidth
@@ -182,15 +173,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             const offsetX = (wrapperRect.width - scaledWidth) / 2 + HORIZONTAL_CENTER_OFFSET
             const offsetY = (wrapperRect.height - scaledHeight) / 2
 
-            console.log('  - 计算的缩放比例:', fitScale)
-            console.log('  - 计算的偏移量:', { offsetX, offsetY })
-            console.log('  - 水平偏移调整:', HORIZONTAL_CENTER_OFFSET)
-            console.log('  ✅ 执行自动适应容器')
-
             setScale(fitScale)
             setPosition({ x: offsetX, y: offsetY })
-          } else {
-            console.log('  ❌ 跳过自动居中（用户已操作）')
           }
         })
       }
@@ -250,16 +234,10 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             const availableWidth = wrapperRect.width - 32
             const availableHeight = wrapperRect.height - 32
 
-            console.log('[handleZoomReset] 🔍 调试信息:')
-            console.log('  - SVG原始尺寸:', { width: svgWidth, height: svgHeight })
-            console.log('  - Wrapper可用尺寸:', { width: availableWidth, height: availableHeight })
-
             // 计算合适的缩放比例，使图表适应容器
             const scaleX = availableWidth / svgWidth
             const scaleY = availableHeight / svgHeight
             const fitScale = Math.min(scaleX, scaleY, 1) // 不要放大，最多 1:1
-
-            console.log('  - 计算的缩放比例:', { scaleX, scaleY, fitScale })
 
             // 应用缩放后的尺寸
             const scaledWidth = svgWidth * fitScale
@@ -269,11 +247,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             const offsetX = (wrapperRect.width - scaledWidth) / 2 + HORIZONTAL_CENTER_OFFSET
             const offsetY = (wrapperRect.height - scaledHeight) / 2
 
-            console.log('  - 缩放后尺寸:', { scaledWidth, scaledHeight })
-            console.log('  - 最终偏移量:', { offsetX, offsetY })
-            console.log('  - 水平偏移调整:', HORIZONTAL_CENTER_OFFSET)
-            console.log('  - 最终scale:', fitScale)
-
             setScale(fitScale)
             setPosition({ x: offsetX, y: offsetY })
           })
@@ -282,7 +255,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       }
     }
     // 如果找不到 SVG，则使用默认重置
-    console.log('[handleZoomReset] ⚠️ 未找到SVG，使用默认重置')
     setScale(1)
     setPosition({ x: 0, y: 0 })
   }, [])
@@ -313,12 +285,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     // 以鼠标位置为中心缩放
     const newX = mouseX - (mouseX - oldPosition.x) * ratio
     const newY = mouseY - (mouseY - oldPosition.y) * ratio
-
-    console.log('[handleWheel] 🖱️ 滚轮缩放:')
-    console.log('  - 鼠标位置:', { mouseX, mouseY })
-    console.log('  - 旧scale:', oldScale, '-> 新scale:', newScale)
-    console.log('  - 旧position:', oldPosition)
-    console.log('  - 新position:', { x: newX, y: newY })
 
     setScale(newScale)
     setPosition({ x: newX, y: newY })
