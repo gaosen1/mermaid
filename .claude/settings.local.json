@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm create:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm dlx shadcn@latest init:*)",
+      "Bash(pnpm dlx shadcn@latest add:*)",
+      "Bash(pnpm tsc:*)",
+      "Bash(timeout 10 pnpm dev:*)",
+      "Bash(pnpm build:*)"
+    ]
+  }
+}
