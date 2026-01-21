@@ -42,6 +42,16 @@ export function MermaidRenderer({
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
+  const scaleRef = useRef(scale)
+  const positionRef = useRef(position)
+
+  useEffect(() => {
+    scaleRef.current = scale
+  }, [scale])
+
+  useEffect(() => {
+    positionRef.current = position
+  }, [position])
 
   useEffect(() => {
     initMermaid(layout, theme).then(() => setInitialized(true))
@@ -157,8 +167,26 @@ export function MermaidRenderer({
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+
+    const rect = wrapper.getBoundingClientRect()
+    const mouseX = e.clientX - rect.left
+    const mouseY = e.clientY - rect.top
+
+    const oldScale = scaleRef.current
+    const oldPosition = positionRef.current
+
     const delta = e.deltaY > 0 ? 0.9 : 1.1
-    setScale(prev => Math.min(Math.max(prev * delta, 0.1), 5))
+    const newScale = Math.min(Math.max(oldScale * delta, 0.1), 5)
+    const ratio = newScale / oldScale
+
+    // 以鼠标位置为中心缩放
+    const newX = mouseX - (mouseX - oldPosition.x) * ratio
+    const newY = mouseY - (mouseY - oldPosition.y) * ratio
+
+    setScale(newScale)
+    setPosition({ x: newX, y: newY })
   }, [])
 
   useEffect(() => {
@@ -235,7 +263,7 @@ export function MermaidRenderer({
           className="w-full h-full p-4"
           style={{
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            transformOrigin: 'center center',
+            transformOrigin: '0 0',
           }}
         />
       </div>
