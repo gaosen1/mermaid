@@ -163,13 +163,14 @@ export function DiagramEditor({ diagramId }: DiagramEditorProps) {
             <CodeEditor
               value={source}
               onChange={handleSourceChange}
-              className="h-full overflow-auto"
+              className="h-full"
+              darkMode={settings.theme === 'dark'}
             />
             <MermaidRenderer
               source={source}
               layout={layout}
               theme={theme as 'default' | 'dark' | 'forest' | 'neutral' | 'base'}
-              className="h-full border rounded-lg overflow-auto"
+              className="h-full border rounded-lg"
             />
           </div>
         </TabsContent>
@@ -178,7 +179,8 @@ export function DiagramEditor({ diagramId }: DiagramEditorProps) {
           <CodeEditor
             value={source}
             onChange={handleSourceChange}
-            className="h-full overflow-auto"
+            className="h-full"
+            darkMode={settings.theme === 'dark'}
           />
         </TabsContent>
 
@@ -187,7 +189,7 @@ export function DiagramEditor({ diagramId }: DiagramEditorProps) {
             source={source}
             layout={layout}
             theme={theme as 'default' | 'dark' | 'forest' | 'neutral' | 'base'}
-            className="h-full border rounded-lg overflow-auto"
+            className="h-full border rounded-lg"
           />
         </TabsContent>
 
