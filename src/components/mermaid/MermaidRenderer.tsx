@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button'
 import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
 import type { LayoutType } from '@/types'
 
+// 🎯 配置项：重置视图时的水平偏移量（正数向右，负数向左）
+// 用于避开左侧浮动面板，可根据需要调整
+const HORIZONTAL_CENTER_OFFSET = 400 // 单位：px，建议范围：0-200
+
 function cleanupMermaidErrors() {
   const errorDivs = document.querySelectorAll('div[id^="dmermaid-"], div[id^="mermaid-"]')
   errorDivs.forEach((div) => {
@@ -59,10 +63,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
   useEffect(() => {
     scaleRef.current = scale
+    console.log('[Scale更新]', scale)
   }, [scale])
 
   useEffect(() => {
     positionRef.current = position
+    console.log('[Position更新]', position)
   }, [position])
 
   useEffect(() => {
@@ -137,10 +143,59 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   }, [source, layout, theme, initialized, onRenderSuccess, onRenderError, onRenderStart])
 
   useEffect(() => {
-    return () => {
-      cleanupMermaidErrors()
+    if (containerRef.current && wrapperRef.current && !isRendering) {
+      const svg = containerRef.current.querySelector('svg')
+      if (svg) {
+        // 使用 requestAnimationFrame 确保 DOM 已完全渲染
+        requestAnimationFrame(() => {
+          if (!containerRef.current || !wrapperRef.current) return
+          const svg = containerRef.current.querySelector('svg') as SVGSVGElement
+          if (!svg) return
+
+          const wrapperRect = wrapperRef.current.getBoundingClientRect()
+
+          console.log('[自动居中Effect] 📐 调试信息:')
+          console.log('  - 当前scale:', scale)
+          console.log('  - 当前position:', position)
+
+          // 只在初始状态时自动适应容器
+          if (scale === 1 && (position.x === 0 || position.y === 0)) {
+            // 获取 SVG 的原始尺寸
+            const viewBox = svg.viewBox.baseVal
+            const svgWidth = viewBox.width || svg.width.baseVal.value
+            const svgHeight = viewBox.height || svg.height.baseVal.value
+
+            const availableWidth = wrapperRect.width - 32
+            const availableHeight = wrapperRect.height - 32
+
+            console.log('  - SVG原始尺寸:', { width: svgWidth, height: svgHeight })
+            console.log('  - Wrapper可用尺寸:', { width: availableWidth, height: availableHeight })
+
+            // 计算合适的缩放比例
+            const scaleX = availableWidth / svgWidth
+            const scaleY = availableHeight / svgHeight
+            const fitScale = Math.min(scaleX, scaleY, 1)
+
+            const scaledWidth = svgWidth * fitScale
+            const scaledHeight = svgHeight * fitScale
+
+            const offsetX = (wrapperRect.width - scaledWidth) / 2 + HORIZONTAL_CENTER_OFFSET
+            const offsetY = (wrapperRect.height - scaledHeight) / 2
+
+            console.log('  - 计算的缩放比例:', fitScale)
+            console.log('  - 计算的偏移量:', { offsetX, offsetY })
+            console.log('  - 水平偏移调整:', HORIZONTAL_CENTER_OFFSET)
+            console.log('  ✅ 执行自动适应容器')
+
+            setScale(fitScale)
+            setPosition({ x: offsetX, y: offsetY })
+          } else {
+            console.log('  ❌ 跳过自动居中（用户已操作）')
+          }
+        })
+      }
     }
-  }, [])
+  }, [isRendering, scale, position])
 
   const handleCopyError = useCallback(() => {
     if (error) {
@@ -169,6 +224,65 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   }, [])
 
   const handleZoomReset = useCallback(() => {
+    if (containerRef.current && wrapperRef.current) {
+      const svg = containerRef.current.querySelector('svg')
+      if (svg) {
+        // 先重置 scale，等待下一帧再获取真实的 SVG 尺寸
+        setScale(1)
+        setPosition({ x: 0, y: 0 })
+
+        // 使用 requestAnimationFrame 确保 scale 重置后再计算
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (!containerRef.current || !wrapperRef.current) return
+
+            const svg = containerRef.current.querySelector('svg')
+            if (!svg) return
+
+            // 获取 SVG 的原始尺寸（从 viewBox 或 width/height 属性）
+            const svgElement = svg as SVGSVGElement
+            const viewBox = svgElement.viewBox.baseVal
+            const svgWidth = viewBox.width || svgElement.width.baseVal.value
+            const svgHeight = viewBox.height || svgElement.height.baseVal.value
+
+            const wrapperRect = wrapperRef.current.getBoundingClientRect()
+            // 留出一些边距（padding 16px * 2 = 32px）
+            const availableWidth = wrapperRect.width - 32
+            const availableHeight = wrapperRect.height - 32
+
+            console.log('[handleZoomReset] 🔍 调试信息:')
+            console.log('  - SVG原始尺寸:', { width: svgWidth, height: svgHeight })
+            console.log('  - Wrapper可用尺寸:', { width: availableWidth, height: availableHeight })
+
+            // 计算合适的缩放比例，使图表适应容器
+            const scaleX = availableWidth / svgWidth
+            const scaleY = availableHeight / svgHeight
+            const fitScale = Math.min(scaleX, scaleY, 1) // 不要放大，最多 1:1
+
+            console.log('  - 计算的缩放比例:', { scaleX, scaleY, fitScale })
+
+            // 应用缩放后的尺寸
+            const scaledWidth = svgWidth * fitScale
+            const scaledHeight = svgHeight * fitScale
+
+            // 居中计算（水平方向应用偏移量）
+            const offsetX = (wrapperRect.width - scaledWidth) / 2 + HORIZONTAL_CENTER_OFFSET
+            const offsetY = (wrapperRect.height - scaledHeight) / 2
+
+            console.log('  - 缩放后尺寸:', { scaledWidth, scaledHeight })
+            console.log('  - 最终偏移量:', { offsetX, offsetY })
+            console.log('  - 水平偏移调整:', HORIZONTAL_CENTER_OFFSET)
+            console.log('  - 最终scale:', fitScale)
+
+            setScale(fitScale)
+            setPosition({ x: offsetX, y: offsetY })
+          })
+        })
+        return
+      }
+    }
+    // 如果找不到 SVG，则使用默认重置
+    console.log('[handleZoomReset] ⚠️ 未找到SVG，使用默认重置')
     setScale(1)
     setPosition({ x: 0, y: 0 })
   }, [])
@@ -199,6 +313,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     // 以鼠标位置为中心缩放
     const newX = mouseX - (mouseX - oldPosition.x) * ratio
     const newY = mouseY - (mouseY - oldPosition.y) * ratio
+
+    console.log('[handleWheel] 🖱️ 滚轮缩放:')
+    console.log('  - 鼠标位置:', { mouseX, mouseY })
+    console.log('  - 旧scale:', oldScale, '-> 新scale:', newScale)
+    console.log('  - 旧position:', oldPosition)
+    console.log('  - 新position:', { x: newX, y: newY })
 
     setScale(newScale)
     setPosition({ x: newX, y: newY })

@@ -397,3 +397,241 @@ quadrantChart
     Svelte: [0.3, 0.5]
     jQuery: [0.2, 0.3]
 ```
+
+## 21. 超级复杂流程图（多层级子图嵌套）
+
+```mermaid
+graph TB
+    subgraph 入口层["🌐 入口层"]
+        direction LR
+        Start["启动应用"] --> Auth["身份验证"]
+        Auth --> Route["路由分发"]
+    end
+
+    subgraph 前端层["💻 前端表现层"]
+        direction TB
+
+        subgraph UI["UI 组件库"]
+            direction LR
+            UI1["Button 组件"]
+            UI2["Form 组件"]
+            UI3["Modal 组件"]
+            UI4["Table 组件"]
+            UI1 --> UI2
+            UI2 --> UI3
+            UI3 --> UI4
+        end
+
+        subgraph 状态管理["📦 状态管理"]
+            direction LR
+            Store["Redux Store"]
+            Middleware["Middleware"]
+            Reducer["Reducers"]
+            Store --> Middleware --> Reducer
+        end
+
+        subgraph 页面模块["📄 页面模块"]
+            direction TB
+            Home["首页"]
+            Dashboard["仪表板"]
+            Settings["设置"]
+            Profile["个人中心"]
+            Home --> Dashboard
+            Dashboard --> Settings
+            Settings --> Profile
+        end
+
+        UI --> 状态管理
+        状态管理 --> 页面模块
+    end
+
+    subgraph 业务层["⚙️ 业务逻辑层"]
+        direction TB
+
+        subgraph 用户模块["👥 用户管理"]
+            direction LR
+            UAuth["认证"]
+            UPerm["权限"]
+            UInfo["信息"]
+            UAuth --> UPerm --> UInfo
+        end
+
+        subgraph 数据处理["🔄 数据处理"]
+            direction LR
+            Valid["验证"]
+            Trans["转换"]
+            Cache["缓存"]
+            Valid --> Trans --> Cache
+        end
+
+        subgraph 业务规则["📋 业务规则"]
+            direction LR
+            Calc["计算"]
+            Judge["判断"]
+            Flow["流程"]
+            Calc --> Judge --> Flow
+        end
+
+        用户模块 --> 数据处理
+        数据处理 --> 业务规则
+    end
+
+    subgraph API层["🔗 API 与通讯层"]
+        direction TB
+
+        subgraph HTTP服务["HTTP 服务"]
+            direction LR
+            GET["GET 请求"]
+            POST["POST 请求"]
+            PUT["PUT 请求"]
+            DELETE["DELETE 请求"]
+            GET --> POST --> PUT --> DELETE
+        end
+
+        subgraph WebSocket["⚡ WebSocket"]
+            direction LR
+            Connect["连接"]
+            Message["消息"]
+            Close["关闭"]
+            Connect --> Message --> Close
+        end
+
+        subgraph 拦截器["🛡️ 拦截器"]
+            direction LR
+            ReqInt["请求拦截"]
+            ResInt["响应拦截"]
+            ErrInt["错误拦截"]
+            ReqInt --> ResInt --> ErrInt
+        end
+
+        HTTP服务 --> WebSocket
+        WebSocket --> 拦截器
+    end
+
+    subgraph 后端服务["🖥️ 后端服务层"]
+        direction TB
+
+        subgraph 控制层["🎮 控制层"]
+            direction LR
+            User_Ctrl["用户控制器"]
+            Order_Ctrl["订单控制器"]
+            Prod_Ctrl["产品控制器"]
+            User_Ctrl --> Order_Ctrl --> Prod_Ctrl
+        end
+
+        subgraph 业务服务["💼 业务服务"]
+            direction LR
+            User_Srv["用户服务"]
+            Order_Srv["订单服务"]
+            Prod_Srv["产品服务"]
+            Pay_Srv["支付服务"]
+            User_Srv --> Order_Srv
+            Order_Srv --> Prod_Srv
+            Prod_Srv --> Pay_Srv
+        end
+
+        subgraph 数据访问["💾 数据访问层"]
+            direction LR
+            User_Repo["用户仓储"]
+            Order_Repo["订单仓储"]
+            Prod_Repo["产品仓储"]
+            Cache_Repo["缓存仓储"]
+            User_Repo --> Order_Repo
+            Order_Repo --> Prod_Repo
+            Prod_Repo --> Cache_Repo
+        end
+
+        控制层 --> 业务服务
+        业务服务 --> 数据访问
+    end
+
+    subgraph 数据层["🗄️ 数据存储层"]
+        direction TB
+
+        subgraph 关系型DB["🔵 关系型数据库"]
+            direction LR
+            MySQL["MySQL"]
+            PostgreSQL["PostgreSQL"]
+            MySQL --> PostgreSQL
+        end
+
+        subgraph NoSQL_DB["🟢 NoSQL 数据库"]
+            direction LR
+            Mongo["MongoDB"]
+            CouchDB["CouchDB"]
+            Mongo --> CouchDB
+        end
+
+        subgraph 缓存层["⚡ 缓存层"]
+            direction LR
+            Redis["Redis"]
+            Memcached["Memcached"]
+            Redis --> Memcached
+        end
+
+        subgraph 搜索["🔍 搜索引擎"]
+            direction LR
+            ES["Elasticsearch"]
+            Solr["Solr"]
+            ES --> Solr
+        end
+
+        关系型DB --> NoSQL_DB
+        NoSQL_DB --> 缓存层
+        缓存层 --> 搜索
+    end
+
+    subgraph 基础设施["🏗️ 基础设施与运维"]
+        direction TB
+
+        subgraph 消息队列["📬 消息队列"]
+            direction LR
+            Kafka["Kafka"]
+            RabbitMQ["RabbitMQ"]
+            Kafka --> RabbitMQ
+        end
+
+        subgraph 监控日志["📊 监控与日志"]
+            direction LR
+            Prometheus["Prometheus"]
+            ELK["ELK Stack"]
+            Jaeger["Jaeger"]
+            Prometheus --> ELK --> Jaeger
+        end
+
+        subgraph CI_CD["🚀 CI/CD"]
+            direction LR
+            Git["Git Hook"]
+            Build["Build"]
+            Test["Test"]
+            Deploy["Deploy"]
+            Git --> Build --> Test --> Deploy
+        end
+
+        消息队列 --> 监控日志
+        监控日志 --> CI_CD
+    end
+
+    Route --> 前端层
+    前端层 --> 业务层
+    业务层 --> API层
+    API层 --> 后端服务
+    后端服务 --> 数据层
+    数据层 --> 基础设施
+
+    classDef entryStyle fill:#FFE082,color:#333,stroke:#FBC02D,stroke-width:3px
+    classDef frontStyle fill:#90CAF9,color:#fff,stroke:#1976D2,stroke-width:2px
+    classDef businessStyle fill:#A5D6A7,color:#fff,stroke:#388E3C,stroke-width:2px
+    classDef apiStyle fill:#CE93D8,color:#fff,stroke:#7B1FA2,stroke-width:2px
+    classDef backStyle fill:#FFB74D,color:#fff,stroke:#E65100,stroke-width:2px
+    classDef dataStyle fill:#EF9A9A,color:#fff,stroke:#C62828,stroke-width:2px
+    classDef infraStyle fill:#80DEEA,color:#fff,stroke:#00838F,stroke-width:2px
+
+    class 入口层 entryStyle
+    class 前端层,UI,状态管理,页面模块 frontStyle
+    class 业务层,用户模块,数据处理,业务规则 businessStyle
+    class API层,HTTP服务,WebSocket,拦截器 apiStyle
+    class 后端服务,控制层,业务服务,数据访问 backStyle
+    class 数据层,关系型DB,NoSQL_DB,缓存层,搜索 dataStyle
+    class 基础设施,消息队列,监控日志,CI_CD infraStyle
+```
