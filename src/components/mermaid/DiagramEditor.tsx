@@ -13,6 +13,7 @@ import {
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Save, History, Eye, Code } from 'lucide-react'
+import type { LayoutType } from '@/types'
 
 interface DiagramEditorProps {
   diagramId: string
@@ -22,43 +23,39 @@ export function DiagramEditor({ diagramId }: DiagramEditorProps) {
   const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots } = useDiagramStore()
   const { settings } = useSettingsStore()
 
-  const [source, setSource] = useState('')
-  const [layout, setLayout] = useState<'elk' | 'dagre'>(settings.defaultLayout)
-  const [theme, setTheme] = useState<'default' | 'dark' | 'forest' | 'neutral' | 'base'>(settings.renderTheme)
-  const [hasChanges, setHasChanges] = useState(false)
+  const [editorState, setEditorState] = useState({
+    source: '',
+    layout: settings.defaultLayout as LayoutType,
+    theme: settings.renderTheme as 'default' | 'dark' | 'forest' | 'neutral' | 'base',
+    hasChanges: false,
+  })
   const autoSaveTimerRef = useRef<number | null>(null)
+
+  // 从状态中解构便于使用
+  const { source, layout, theme, hasChanges } = editorState
 
   useEffect(() => {
     if (currentDiagram) {
-      setSource(currentDiagram.source)
-      setLayout(currentDiagram.config?.layout || settings.defaultLayout)
-      setTheme(currentDiagram.config?.theme || settings.renderTheme)
-      setHasChanges(false)
+      setEditorState({
+        source: currentDiagram.source,
+        layout: currentDiagram.config?.layout || settings.defaultLayout,
+        theme: currentDiagram.config?.theme || settings.renderTheme,
+        hasChanges: false,
+      })
       loadSnapshots(currentDiagram.id)
     }
   }, [currentDiagram, settings.defaultLayout, settings.renderTheme, loadSnapshots])
 
-  useEffect(() => {
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current)
-    }
-
-    if (hasChanges && currentDiagram && settings.autoSaveInterval > 0) {
-      autoSaveTimerRef.current = window.setTimeout(() => {
-        handleSave(true)
-      }, settings.autoSaveInterval)
-    }
-
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current)
-      }
-    }
-  }, [hasChanges, source, currentDiagram, settings.autoSaveInterval])
-
   const handleSourceChange = useCallback((newSource: string) => {
-    setSource(newSource)
-    setHasChanges(true)
+    setEditorState(prev => ({ ...prev, source: newSource, hasChanges: true }))
+  }, [])
+
+  const setLayout = useCallback((newLayout: LayoutType) => {
+    setEditorState(prev => ({ ...prev, layout: newLayout }))
+  }, [])
+
+  const setTheme = useCallback((newTheme: 'default' | 'dark' | 'forest' | 'neutral' | 'base') => {
+    setEditorState(prev => ({ ...prev, theme: newTheme }))
   }, [])
 
   const handleSave = useCallback(async (isAuto = false) => {
@@ -76,8 +73,26 @@ export function DiagramEditor({ diagramId }: DiagramEditorProps) {
       config: { layout, theme },
     })
 
-    setHasChanges(false)
+    setEditorState(prev => ({ ...prev, hasChanges: false }))
   }, [currentDiagram, diagramId, source, layout, theme, updateDiagram, createSnapshot])
+
+  useEffect(() => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+    }
+
+    if (hasChanges && currentDiagram && settings.autoSaveInterval > 0) {
+      autoSaveTimerRef.current = window.setTimeout(() => {
+        handleSave(true)
+      }, settings.autoSaveInterval)
+    }
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [hasChanges, currentDiagram, settings.autoSaveInterval, handleSave])
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
@@ -109,13 +124,14 @@ export function DiagramEditor({ diagramId }: DiagramEditorProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Select value={layout} onValueChange={(v) => setLayout(v as 'elk' | 'dagre')}>
-            <SelectTrigger className="w-[120px]">
+          <Select value={layout} onValueChange={(v) => setLayout(v as LayoutType)}>
+            <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="布局" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="elk">ELK</SelectItem>
               <SelectItem value="dagre">Dagre</SelectItem>
+              <SelectItem value="hierarchical">Hierarchical</SelectItem>
             </SelectContent>
           </Select>
           <Select value={theme} onValueChange={(v) => setTheme(v as 'default' | 'dark' | 'forest' | 'neutral' | 'base')}>

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { RotateCcw } from 'lucide-react'
+import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
   const { settings, updateSettings, resetSettings } = useSettingsStore()
@@ -95,7 +96,7 @@ export function SettingsPage() {
               </div>
               <Select
                 value={settings.defaultLayout}
-                onValueChange={(v) => updateSettings({ defaultLayout: v as 'elk' | 'dagre' })}
+                onValueChange={(v) => updateSettings({ defaultLayout: v as LayoutType })}
               >
                 <SelectTrigger className="w-[150px]">
                   <SelectValue />
@@ -103,6 +104,7 @@ export function SettingsPage() {
                 <SelectContent>
                   <SelectItem value="elk">ELK</SelectItem>
                   <SelectItem value="dagre">Dagre</SelectItem>
+                  <SelectItem value="hierarchical">Hierarchical</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -17,8 +17,10 @@ export interface Diagram {
   updatedAt: number
 }
 
+export type LayoutType = 'elk' | 'dagre' | 'hierarchical'
+
 export interface DiagramConfig {
-  layout?: 'elk' | 'dagre'
+  layout?: LayoutType
   theme?: 'default' | 'dark' | 'forest' | 'neutral' | 'base'
   [key: string]: unknown
 }
@@ -36,7 +38,7 @@ export interface UserSettings {
   id: string
   language: 'zh' | 'en'
   theme: 'light' | 'dark' | 'system'
-  defaultLayout: 'elk' | 'dagre'
+  defaultLayout: LayoutType
   defaultExportFormat: 'png' | 'svg'
   renderTheme: 'default' | 'dark' | 'forest' | 'neutral' | 'base'
   autoSaveInterval: number

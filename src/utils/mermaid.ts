@@ -1,10 +1,52 @@
 import mermaid from 'mermaid'
 import elkLayouts from '@mermaid-js/layout-elk'
+import type { LayoutType } from '@/types'
 
 let initialized = false
 
+// 通用边配置：正交走线 + 独立端口
+const commonEdgeConfig = {
+  // 正交/曼哈顿走线
+  'elk.edgeRouting': 'ORTHOGONAL',
+  // 禁止合并边，每条边独立端口
+  'elk.layered.mergeEdges': 'false',
+  // 边与边之间的间距
+  'elk.spacing.edgeEdge': '15',
+  'elk.spacing.edgeNode': '20',
+  // 端口分布策略：均匀分布
+  'elk.portAlignment.default': 'DISTRIBUTED',
+  'elk.portConstraints': 'FIXED_ORDER',
+}
+
+function getElkConfig(layout: LayoutType) {
+  switch (layout) {
+    case 'hierarchical':
+      // 严格分层布局：固定方向、层级清晰、层间距稳定
+      return {
+        ...commonEdgeConfig,
+        mergeEdges: false,
+        nodePlacementStrategy: 'SIMPLE',
+        'elk.algorithm': 'layered',
+        'elk.direction': 'DOWN',
+        'elk.layered.spacing.nodeNodeBetweenLayers': '50',
+        'elk.layered.spacing.edgeNodeBetweenLayers': '25',
+        'elk.spacing.nodeNode': '30',
+        'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+      }
+    default:
+      // elk 默认配置
+      return {
+        ...commonEdgeConfig,
+        mergeEdges: false,
+        nodePlacementStrategy: 'NETWORK_SIMPLEX',
+        'elk.layered.spacing.nodeNodeBetweenLayers': '45',
+        'elk.layered.spacing.edgeNodeBetweenLayers': '20',
+      }
+  }
+}
+
 export async function initMermaid(
-  layout: 'elk' | 'dagre' = 'elk',
+  layout: LayoutType = 'elk',
   theme: string = 'base'
 ): Promise<void> {
   if (!initialized) {
@@ -12,18 +54,24 @@ export async function initMermaid(
     initialized = true
   }
 
+  const useElk = layout === 'elk' || layout === 'hierarchical'
+  const elkConfig = useElk ? getElkConfig(layout) : {}
+
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'loose',
     theme: theme as 'default' | 'dark' | 'forest' | 'neutral' | 'base',
     flowchart: {
-      curve: 'basis',
-      defaultRenderer: layout === 'elk' ? 'elk' : undefined,
+      // 使用 linear 配合正交走线，拐角更清晰
+      curve: 'linear',
+      defaultRenderer: useElk ? 'elk' : undefined,
+      // 节点间距
+      nodeSpacing: 30,
+      rankSpacing: 50,
+      // 禁用默认的边合并
+      wrappingWidth: 200,
     },
-    elk: {
-      mergeEdges: true,
-      nodePlacementStrategy: 'NETWORK_SIMPLEX',
-    },
+    elk: elkConfig,
   })
 }
 

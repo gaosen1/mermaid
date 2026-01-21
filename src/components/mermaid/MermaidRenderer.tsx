@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Copy, Download, AlertCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
+import type { LayoutType } from '@/types'
 
 function cleanupMermaidErrors() {
   const errorDivs = document.querySelectorAll('div[id^="dmermaid-"], div[id^="mermaid-"]')
@@ -17,7 +18,7 @@ function cleanupMermaidErrors() {
 
 interface MermaidRendererProps {
   source: string
-  layout?: 'elk' | 'dagre'
+  layout?: LayoutType
   theme?: 'default' | 'dark' | 'forest' | 'neutral' | 'base'
   className?: string
   onRenderSuccess?: () => void
