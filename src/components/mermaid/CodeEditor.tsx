@@ -19,12 +19,36 @@ const baseTheme = EditorView.theme({
     fontSize: '14px',
   },
   '.cm-scroller': {
-    overflow: 'auto',
+    overflow: 'auto !important', // 确保横向和纵向都可滚动
     fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+    // 滚动条样式优化
+    scrollbarWidth: 'thin',
+    scrollbarColor: 'transparent transparent',
+    '&:hover': {
+      scrollbarColor: 'rgba(155, 155, 155, 0.5) transparent',
+    },
+  },
+  '.cm-scroller::-webkit-scrollbar': {
+    width: '6px',
+    height: '6px',
+  },
+  '.cm-scroller::-webkit-scrollbar-track': {
+    background: 'transparent',
+  },
+  '.cm-scroller::-webkit-scrollbar-thumb': {
+    background: 'transparent',
+    borderRadius: '3px',
+  },
+  '.cm-scroller:hover::-webkit-scrollbar-thumb': {
+    background: 'rgba(155, 155, 155, 0.5)',
+  },
+  '.cm-scroller::-webkit-scrollbar-thumb:hover': {
+    background: 'rgba(155, 155, 155, 0.7)',
   },
   '.cm-content': {
     padding: '12px 0',
     paddingBottom: '50vh',
+    minWidth: 'max-content', // 允许内容超出容器宽度以启用横向滚动
   },
   '.cm-line': {
     padding: '0 12px',
@@ -33,9 +57,11 @@ const baseTheme = EditorView.theme({
     outline: 'none',
   },
   '.cm-gutters': {
-    backgroundColor: 'transparent',
     border: 'none',
     paddingLeft: '8px',
+    position: 'sticky',
+    left: 0,
+    zIndex: 10,
   },
   '.cm-lineNumbers .cm-gutterElement': {
     padding: '0 8px 0 0',
@@ -48,7 +74,14 @@ const lightTheme = EditorView.theme({
     backgroundColor: '#ffffff',
   },
   '.cm-gutters': {
+    backgroundColor: '#ffffff',
     color: '#999',
+  },
+})
+
+const darkThemeOverride = EditorView.theme({
+  '.cm-gutters': {
+    backgroundColor: '#282c34',
   },
 })
 
@@ -67,7 +100,12 @@ export function CodeEditor({
         onChange={onChange}
         placeholder={placeholder}
         readOnly={readOnly}
-        extensions={[markdown(), baseTheme, darkMode ? oneDark : lightTheme]}
+        extensions={[
+          markdown(),
+          baseTheme,
+          darkMode ? oneDark : lightTheme,
+          darkMode ? darkThemeOverride : [],
+        ].flat()}
         theme={darkMode ? 'dark' : 'light'}
         basicSetup={{
           lineNumbers: true,

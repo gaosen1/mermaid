@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
 import { initMermaid, renderMermaid, getSvgFromContainer, exportToPng, exportToSvg } from '@/utils/mermaid'
 import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter } from '@/utils/dsl'
 import { saveAs } from 'file-saver'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Copy, Download, AlertCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
+import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
 import type { LayoutType } from '@/types'
 
 function cleanupMermaidErrors() {
@@ -16,27 +16,38 @@ function cleanupMermaidErrors() {
   })
 }
 
+export interface MermaidRendererRef {
+  exportPng: () => Promise<void>
+  exportSvg: () => void
+  resetView: () => void
+}
+
 interface MermaidRendererProps {
   source: string
   layout?: LayoutType
   theme?: 'default' | 'dark' | 'forest' | 'neutral' | 'base'
   className?: string
+  showControls?: boolean
   onRenderSuccess?: () => void
   onRenderError?: (error: string) => void
+  onRenderStart?: () => void
 }
 
-export function MermaidRenderer({
+export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererProps>(({
   source,
   layout = 'elk',
   theme = 'base',
   className = '',
+  showControls = true,
   onRenderSuccess,
   onRenderError,
-}: MermaidRendererProps) {
+  onRenderStart,
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
+  const [isRendering, setIsRendering] = useState(false)
   const renderIdRef = useRef(0)
   const debounceTimerRef = useRef<number | null>(null)
   const [scale, setScale] = useState(1)
@@ -78,6 +89,8 @@ export function MermaidRenderer({
 
     debounceTimerRef.current = window.setTimeout(async () => {
       cleanupMermaidErrors()
+      setIsRendering(true)
+      onRenderStart?.()
 
       try {
         const { config: frontmatterConfig, content } = parseFrontmatter(source)
@@ -102,6 +115,7 @@ export function MermaidRenderer({
             injectStyles(containerRef.current, animationCSS)
           }
           setError(null)
+          setIsRendering(false)
           onRenderSuccess?.()
         }
       } catch (err) {
@@ -110,6 +124,7 @@ export function MermaidRenderer({
         if (currentRenderId !== renderIdRef.current) return
         const errorMessage = err instanceof Error ? err.message : 'Render failed'
         setError(errorMessage)
+        setIsRendering(false)
         onRenderError?.(errorMessage)
       }
     }, 300)
@@ -119,7 +134,7 @@ export function MermaidRenderer({
         clearTimeout(debounceTimerRef.current)
       }
     }
-  }, [source, layout, theme, initialized, onRenderSuccess, onRenderError])
+  }, [source, layout, theme, initialized, onRenderSuccess, onRenderError, onRenderStart])
 
   useEffect(() => {
     return () => {
@@ -153,18 +168,17 @@ export function MermaidRenderer({
     saveAs(blob, 'diagram.svg')
   }, [])
 
-  const handleZoomIn = useCallback(() => {
-    setScale(prev => Math.min(prev * 1.2, 5))
-  }, [])
-
-  const handleZoomOut = useCallback(() => {
-    setScale(prev => Math.max(prev / 1.2, 0.1))
-  }, [])
-
   const handleZoomReset = useCallback(() => {
     setScale(1)
     setPosition({ x: 0, y: 0 })
   }, [])
+
+  // 暴露方法给父组件
+  useImperativeHandle(ref, () => ({
+    exportPng: handleExportPng,
+    exportSvg: handleExportSvg,
+    resetView: handleZoomReset,
+  }), [handleExportPng, handleExportSvg, handleZoomReset])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
@@ -216,34 +230,38 @@ export function MermaidRenderer({
 
   return (
     <div className={`relative flex flex-col ${className}`}>
-      <div className="absolute top-2 right-2 flex gap-2 z-10">
-        <Button variant="outline" size="sm" onClick={handleZoomIn} title="放大">
-          <ZoomIn className="h-4 w-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleZoomOut} title="缩小">
-          <ZoomOut className="h-4 w-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleZoomReset} title="重置">
-          <RotateCcw className="h-4 w-4" />
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleExportPng} disabled={!!error}>
-          <Download className="h-4 w-4 mr-1" />
-          PNG
-        </Button>
-        <Button variant="outline" size="sm" onClick={handleExportSvg} disabled={!!error}>
-          <Download className="h-4 w-4 mr-1" />
-          SVG
-        </Button>
-      </div>
+      {/* 控制按钮 - 仅重置 */}
+      {showControls && (
+        <div className="absolute top-2 right-2 flex gap-2 z-10">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleZoomReset}
+            title="重置视图"
+            className="bg-background/80 backdrop-blur-sm"
+          >
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* 渲染中指示器 */}
+      {isRendering && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm z-20 pointer-events-none">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span className="text-sm">渲染中...</span>
+          </div>
+        </div>
+      )}
 
       {error && (
-        <Alert variant="destructive" className="mb-2 shrink-0">
+        <Alert variant="destructive" className="absolute top-2 left-2 right-14 z-10 bg-background/95">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription className="flex items-center justify-between gap-2">
-            <span className="break-all text-sm">{error}</span>
+            <span className="break-all text-sm line-clamp-2">{error}</span>
             <Button variant="outline" size="sm" onClick={handleCopyError} className="shrink-0">
-              <Copy className="h-4 w-4 mr-1" />
-              复制
+              <Copy className="h-4 w-4" />
             </Button>
           </AlertDescription>
         </Alert>
@@ -261,7 +279,7 @@ export function MermaidRenderer({
       >
         <div
           ref={containerRef}
-          className="w-full h-full p-4"
+          className="w-full h-full p-4 will-change-transform"
           style={{
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
             transformOrigin: '0 0',
@@ -270,4 +288,6 @@ export function MermaidRenderer({
       </div>
     </div>
   )
-}
+})
+
+MermaidRenderer.displayName = 'MermaidRenderer'
