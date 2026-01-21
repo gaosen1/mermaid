@@ -58,56 +58,91 @@ export function parseFrontmatter(source: string): { config: DiagramConfig | null
   }
 }
 
+// 自定义扩展属性列表
+const CUSTOM_PROPS = ['animation', 'fill', 'color', 'stroke', 'stroke-width']
+
+function isCustomExtension(content: string): boolean {
+  // 检查是否包含我们自定义的属性
+  return CUSTOM_PROPS.some(prop => {
+    const regex = new RegExp(`\\b${prop}\\s*:`)
+    return regex.test(content)
+  })
+}
+
 export function parseExtendedDSL(source: string): ParsedDSL {
   const animations: AnimationConfig[] = []
   const styles: StyleConfig[] = []
   const classes: string[] = []
 
-  const animationRegex = /(\w+)@\{\s*animation:\s*(\w+)\s*\}/g
-  let processedSource = source.replace(animationRegex, (_, nodeId, animation) => {
-    animations.push({ nodeId, animation })
-    const className = `animation-${animation}`
-    classes.push(`class ${nodeId} ${className};`)
-    return nodeId
-  })
+  // 匹配 NODE@{...} 格式，但只处理包含自定义属性的
+  const extendedSyntaxRegex = /(\w+)@\{\s*([^}]+)\s*\}/g
 
-  const styleRegex = /(\w+)@\{\s*([^}]+)\s*\}/g
-  processedSource = processedSource.replace(styleRegex, (_, nodeId, styleStr) => {
-    const styleConfig: StyleConfig = { nodeId }
-
-    const fillMatch = styleStr.match(/fill:\s*([^;]+)/)
-    if (fillMatch) styleConfig.fill = fillMatch[1].trim()
-
-    const colorMatch = styleStr.match(/color:\s*([^;]+)/)
-    if (colorMatch) styleConfig.color = colorMatch[1].trim()
-
-    const strokeMatch = styleStr.match(/stroke:\s*([^;]+)/)
-    if (strokeMatch) styleConfig.stroke = strokeMatch[1].trim()
-
-    const strokeWidthMatch = styleStr.match(/stroke-width:\s*([^;]+)/)
-    if (strokeWidthMatch) styleConfig.strokeWidth = strokeWidthMatch[1].trim()
-
-    styles.push(styleConfig)
-
-    const styleProps: string[] = []
-    if (styleConfig.fill) styleProps.push(`fill:${styleConfig.fill}`)
-    if (styleConfig.color) styleProps.push(`color:${styleConfig.color}`)
-    if (styleConfig.stroke) styleProps.push(`stroke:${styleConfig.stroke}`)
-    if (styleConfig.strokeWidth) styleProps.push(`stroke-width:${styleConfig.strokeWidth}`)
-
-    if (styleProps.length > 0) {
-      classes.push(`style ${nodeId} ${styleProps.join(',')}`)
+  const processedSource = source.replace(extendedSyntaxRegex, (match, nodeId, content) => {
+    // 如果不是我们的自定义扩展语法，保留原样
+    if (!isCustomExtension(content)) {
+      return match
     }
 
+    // 处理 animation 属性
+    const animationMatch = content.match(/animation:\s*(\w+)/)
+    if (animationMatch) {
+      const animation = animationMatch[1]
+      animations.push({ nodeId, animation })
+      const className = `animation-${animation}`
+      classes.push(`class ${nodeId} ${className};`)
+    }
+
+    // 处理样式属性
+    const styleConfig: StyleConfig = { nodeId }
+    let hasStyle = false
+
+    const fillMatch = content.match(/fill:\s*([^;}\s]+)/)
+    if (fillMatch) {
+      styleConfig.fill = fillMatch[1].trim()
+      hasStyle = true
+    }
+
+    const colorMatch = content.match(/color:\s*([^;}\s]+)/)
+    if (colorMatch) {
+      styleConfig.color = colorMatch[1].trim()
+      hasStyle = true
+    }
+
+    const strokeMatch = content.match(/stroke:\s*([^;}\s]+)/)
+    if (strokeMatch) {
+      styleConfig.stroke = strokeMatch[1].trim()
+      hasStyle = true
+    }
+
+    const strokeWidthMatch = content.match(/stroke-width:\s*([^;}\s]+)/)
+    if (strokeWidthMatch) {
+      styleConfig.strokeWidth = strokeWidthMatch[1].trim()
+      hasStyle = true
+    }
+
+    if (hasStyle) {
+      styles.push(styleConfig)
+      const styleProps: string[] = []
+      if (styleConfig.fill) styleProps.push(`fill:${styleConfig.fill}`)
+      if (styleConfig.color) styleProps.push(`color:${styleConfig.color}`)
+      if (styleConfig.stroke) styleProps.push(`stroke:${styleConfig.stroke}`)
+      if (styleConfig.strokeWidth) styleProps.push(`stroke-width:${styleConfig.strokeWidth}`)
+      if (styleProps.length > 0) {
+        classes.push(`style ${nodeId} ${styleProps.join(',')}`)
+      }
+    }
+
+    // 移除自定义扩展语法，只保留节点 ID
     return nodeId
   })
 
+  let finalSource = processedSource
   if (classes.length > 0) {
-    processedSource = processedSource.trim() + '\n' + classes.join('\n')
+    finalSource = processedSource.trim() + '\n' + classes.join('\n')
   }
 
   return {
-    source: processedSource,
+    source: finalSource,
     classes,
     styles: styles.map(s => JSON.stringify(s)),
     animations,
