@@ -15,6 +15,18 @@ const ANIMATION_CSS: Record<string, string> = {
   blink: `
     animation: blink 1s step-start infinite;
   `,
+  march: `
+    stroke-dasharray: 10 5;
+    animation: march 1s linear infinite;
+  `,
+  'march-fast': `
+    stroke-dasharray: 10 5;
+    animation: march 0.5s linear infinite;
+  `,
+  'march-none': `
+    stroke-dasharray: 10 5;
+    animation: none;
+  `,
 }
 
 const ANIMATION_KEYFRAMES = `
@@ -27,6 +39,9 @@ const ANIMATION_KEYFRAMES = `
 }
 @keyframes blink {
   50% { opacity: 0; }
+}
+@keyframes march {
+  to { stroke-dashoffset: -15; }
 }
 `
 
@@ -59,7 +74,13 @@ export function parseFrontmatter(source: string): { config: DiagramConfig | null
 }
 
 // 自定义扩展属性列表
-const CUSTOM_PROPS = ['animation', 'fill', 'color', 'stroke', 'stroke-width']
+const CUSTOM_PROPS = ['animation', 'fill', 'color', 'stroke', 'stroke-width', 'stroke-style']
+
+const STROKE_STYLE_MAP: Record<string, { dasharray: string; width: string }> = {
+  normal: { dasharray: 'none', width: '1px' },
+  dotted: { dasharray: '3 3', width: '1px' },
+  thick: { dasharray: 'none', width: '3px' },
+}
 
 function isCustomExtension(content: string): boolean {
   // 检查是否包含我们自定义的属性
@@ -120,6 +141,19 @@ export function parseExtendedDSL(source: string): ParsedDSL {
       hasStyle = true
     }
 
+    const strokeStyleMatch = content.match(/stroke-style:\s*(\w+)/)
+    if (strokeStyleMatch) {
+      const styleName = strokeStyleMatch[1].toLowerCase()
+      const style = STROKE_STYLE_MAP[styleName]
+      if (style) {
+        if (style.dasharray !== 'none') {
+          styleConfig.strokeDasharray = style.dasharray
+        }
+        styleConfig.strokeWidth = style.width
+        hasStyle = true
+      }
+    }
+
     if (hasStyle) {
       styles.push(styleConfig)
       const styleProps: string[] = []
@@ -127,6 +161,7 @@ export function parseExtendedDSL(source: string): ParsedDSL {
       if (styleConfig.color) styleProps.push(`color:${styleConfig.color}`)
       if (styleConfig.stroke) styleProps.push(`stroke:${styleConfig.stroke}`)
       if (styleConfig.strokeWidth) styleProps.push(`stroke-width:${styleConfig.strokeWidth}`)
+      if (styleConfig.strokeDasharray) styleProps.push(`stroke-dasharray:${styleConfig.strokeDasharray}`)
       if (styleProps.length > 0) {
         classes.push(`style ${nodeId} ${styleProps.join(',')}`)
       }

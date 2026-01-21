@@ -9,7 +9,10 @@
       "Bash(pnpm tsc:*)",
       "Bash(timeout 10 pnpm dev:*)",
       "Bash(pnpm build:*)",
-      "Bash(pnpm dev)"
+      "Bash(pnpm dev)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ]
   }
 }

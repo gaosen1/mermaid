@@ -4,7 +4,7 @@ import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter 
 import { saveAs } from 'file-saver'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Copy, Download, AlertCircle } from 'lucide-react'
+import { Copy, Download, AlertCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 
 function cleanupMermaidErrors() {
   const errorDivs = document.querySelectorAll('div[id^="dmermaid-"], div[id^="mermaid-"]')
@@ -33,10 +33,15 @@ export function MermaidRenderer({
   onRenderError,
 }: MermaidRendererProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [initialized, setInitialized] = useState(false)
   const renderIdRef = useRef(0)
   const debounceTimerRef = useRef<number | null>(null)
+  const [scale, setScale] = useState(1)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
 
   useEffect(() => {
     initMermaid(layout, theme).then(() => setInitialized(true))
@@ -137,9 +142,61 @@ export function MermaidRenderer({
     saveAs(blob, 'diagram.svg')
   }, [])
 
+  const handleZoomIn = useCallback(() => {
+    setScale(prev => Math.min(prev * 1.2, 5))
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    setScale(prev => Math.max(prev / 1.2, 0.1))
+  }, [])
+
+  const handleZoomReset = useCallback(() => {
+    setScale(1)
+    setPosition({ x: 0, y: 0 })
+  }, [])
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    setScale(prev => Math.min(Math.max(prev * delta, 0.1), 5))
+  }, [])
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    wrapper.addEventListener('wheel', handleWheel, { passive: false })
+    return () => wrapper.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (e.button === 2) {
+      e.preventDefault()
+      setIsDragging(true)
+      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y })
+    }
+  }, [position])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return
+    setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y })
+  }, [isDragging, dragStart])
+
+  const handleMouseUp = useCallback(() => setIsDragging(false), [])
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
+
   return (
     <div className={`relative flex flex-col ${className}`}>
       <div className="absolute top-2 right-2 flex gap-2 z-10">
+        <Button variant="outline" size="sm" onClick={handleZoomIn} title="放大">
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleZoomOut} title="缩小">
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleZoomReset} title="重置">
+          <RotateCcw className="h-4 w-4" />
+        </Button>
         <Button variant="outline" size="sm" onClick={handleExportPng} disabled={!!error}>
           <Download className="h-4 w-4 mr-1" />
           PNG
@@ -164,9 +221,24 @@ export function MermaidRenderer({
       )}
 
       <div
-        ref={containerRef}
-        className="flex-1 w-full overflow-auto p-4 bg-white dark:bg-gray-900 rounded-lg min-h-0"
-      />
+        ref={wrapperRef}
+        className="flex-1 w-full overflow-hidden bg-white dark:bg-gray-900 rounded-lg min-h-0"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onContextMenu={handleContextMenu}
+        style={{ cursor: isDragging ? 'grabbing' : 'default' }}
+      >
+        <div
+          ref={containerRef}
+          className="w-full h-full p-4"
+          style={{
+            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+            transformOrigin: 'center center',
+          }}
+        />
+      </div>
     </div>
   )
 }

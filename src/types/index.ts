@@ -74,4 +74,5 @@ export interface StyleConfig {
   color?: string
   stroke?: string
   strokeWidth?: string
+  strokeDasharray?: string
 }
