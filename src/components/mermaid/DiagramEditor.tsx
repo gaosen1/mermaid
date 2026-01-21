@@ -48,9 +48,10 @@ function saveEditorState(state: EditorPanelState) {
 interface DiagramEditorProps {
   diagramId: string
   sidebarWidth?: number
+  sidebarAnimating?: boolean
 }
 
-export function DiagramEditor({ diagramId, sidebarWidth = 0 }: DiagramEditorProps) {
+export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = false }: DiagramEditorProps) {
   const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
   const { settings } = useSettingsStore()
 
@@ -190,8 +191,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0 }: DiagramEditorProp
           flex flex-col
           bg-background/95 backdrop-blur-md
           border rounded-lg shadow-2xl
-          transition-[left] duration-300 ease-out
-          ${isAnimating ? 'transition-[left,opacity] duration-300 ease-out' : ''}
+          ${(isAnimating || sidebarAnimating) ? 'transition-[left,opacity] duration-300 ease-out' : ''}
           ${panelState.collapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}
         `}
         style={{

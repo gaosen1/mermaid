@@ -131,6 +131,7 @@ export function ProjectPage({ projectId, onBack }: ProjectPageProps) {
         <DiagramEditor
           diagramId={currentDiagram.id}
           sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
+          sidebarAnimating={isAnimating}
         />
       ) : (
         <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/30">

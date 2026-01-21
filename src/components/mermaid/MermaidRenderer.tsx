@@ -229,7 +229,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
 
   return (
-    <div className={`relative flex flex-col ${className}`}>
+    <div className={`relative h-full w-full ${className}`}>
       {/* 控制按钮 - 仅重置 */}
       {showControls && (
         <div className="absolute top-2 right-2 flex gap-2 z-10">
@@ -269,7 +269,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
       <div
         ref={wrapperRef}
-        className="flex-1 w-full overflow-hidden bg-white dark:bg-gray-900 rounded-lg min-h-0"
+        className="absolute inset-0 overflow-hidden bg-white dark:bg-gray-900 rounded-lg"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
