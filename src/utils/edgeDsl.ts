@@ -36,13 +36,13 @@ function edgeStyleToCss(style: EdgeStyle): string {
   // Stroke type
   switch (style.stroke) {
     case 'normal':
-      parts.push('stroke-width:2px')
+      parts.push('stroke-width:1px')
       break
     case 'dotted':
-      parts.push('stroke-dasharray:5 5', 'stroke-width:2px')
+      parts.push('stroke-dasharray:5 5', 'stroke-width:1px')
       break
     case 'thick':
-      parts.push('stroke-width:4px')
+      parts.push('stroke-width:2px')
       break
   }
 
@@ -82,7 +82,7 @@ function cssToEdgeStyle(cssString: string): EdgeStyle {
   const strokeWidthMatch = cssString.match(/stroke-width\s*:\s*(\d+)px/)
   if (strokeWidthMatch) {
     const width = parseInt(strokeWidthMatch[1], 10)
-    if (width >= 4) {
+    if (width >= 2) {
       style.stroke = 'thick'
     } else {
       style.stroke = 'normal'

@@ -137,14 +137,14 @@ path.flowchart-link.edge-selected {
 }
 
 /* 暗色主题下只修改连接线的颜色 - 精确选择器 */
-.dark path.flowchart-link {
+/* .dark path.flowchart-link {
   stroke: #a1a1aa !important;
-}
+} */
 
 /* 暗色主题下修复箭头颜色 - 只针对 marker 内的 path */
-.dark svg defs marker path {
+/* .dark svg defs marker path {
   fill: #a1a1aa !important;
-}
+} */
 
 /* Edge 点击区域 - 透明扩展层 */
 path.edge-hitarea {
