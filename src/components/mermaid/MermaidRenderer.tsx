@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
+import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import type { LayoutType } from '@/types'
 
 // 🎯 配置项：重置视图时的水平偏移量（正数向右，负数向左）
@@ -24,6 +25,7 @@ export interface MermaidRendererRef {
   exportPng: () => Promise<void>
   exportSvg: () => void
   resetView: () => void
+  restoreEdgeSelection: () => void
 }
 
 interface MermaidRendererProps {
@@ -32,9 +34,11 @@ interface MermaidRendererProps {
   theme?: 'default' | 'dark' | 'forest' | 'neutral' | 'base'
   className?: string
   showControls?: boolean
+  edgeSelectionEnabled?: boolean
   onRenderSuccess?: () => void
   onRenderError?: (error: string) => void
   onRenderStart?: () => void
+  onEdgeSelect?: (edge: SelectedEdge | null) => void
 }
 
 export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererProps>(({
@@ -43,9 +47,11 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   theme = 'base',
   className = '',
   showControls = true,
+  edgeSelectionEnabled = false,
   onRenderSuccess,
   onRenderError,
   onRenderStart,
+  onEdgeSelect,
 }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -68,6 +74,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   useEffect(() => {
     positionRef.current = position
   }, [position])
+
+  // Edge 选中逻辑 - 在 SVG 渲染后绑定
+  const { restoreSelection: restoreEdgeSelection, bindEvents: bindEdgeEvents } = useEdgeSelection({
+    containerRef,
+    enabled: edgeSelectionEnabled,
+    onSelect: onEdgeSelect,
+  })
 
   useEffect(() => {
     initMermaid(layout, theme).then(() => setInitialized(true))
@@ -115,6 +128,81 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
         if (containerRef.current) {
           containerRef.current.innerHTML = svg
+
+          // 调试：检查 SVG 结构
+          const svgEl = containerRef.current.querySelector('svg')
+          if (svgEl) {
+            console.log('[MermaidRenderer] SVG rendered, checking structure...')
+            console.log('[MermaidRenderer] SVG element:', svgEl)
+
+            // 确保 SVG 可以接收点击事件
+            svgEl.style.pointerEvents = 'auto'
+
+            // ELK 布局: path.flowchart-link
+            const flowchartLinks = svgEl.querySelectorAll('path.flowchart-link')
+            console.log('[MermaidRenderer] Found flowchart-link elements:', flowchartLinks.length)
+            flowchartLinks.forEach((path, i) => {
+              console.log(`[MermaidRenderer] flowchart-link ${i}:`, path.getAttribute('class'), 'stroke:', getComputedStyle(path).stroke)
+
+              // 为 path 添加索引标记
+              path.setAttribute('data-edge-index', i.toString())
+
+              // 设置一个足够宽的 stroke 用于点击，但通过 paint-order 让它不可见
+              const wrapper = document.createElementNS('http://www.w3.org/2000/svg', 'g')
+              wrapper.setAttribute('class', 'edge-wrapper')
+              wrapper.setAttribute('data-edge-index', i.toString())
+
+              // 创建宽的透明底层用于点击
+              const hitArea = path.cloneNode(false) as SVGPathElement
+              hitArea.setAttribute('class', 'edge-hitarea')
+              hitArea.style.stroke = 'transparent'
+              hitArea.style.strokeWidth = '14px'
+              hitArea.style.fill = 'none'
+              hitArea.style.pointerEvents = 'stroke'
+              hitArea.style.cursor = 'pointer'
+              // 清除箭头
+              hitArea.removeAttribute('marker-end')
+              hitArea.removeAttribute('marker-start')
+              // 清除动画和虚线样式
+              hitArea.style.animation = 'none'
+              hitArea.style.strokeDasharray = 'none'
+              hitArea.style.strokeDashoffset = '0'
+              hitArea.removeAttribute('data-animation')
+              hitArea.removeAttribute('data-stroke')
+
+              // 原线条禁用点击
+              ;(path as SVGPathElement).style.pointerEvents = 'none'
+
+              // 替换结构
+              const parent = path.parentElement
+              if (parent) {
+                parent.insertBefore(wrapper, path)
+                wrapper.appendChild(hitArea)
+                wrapper.appendChild(path)
+              }
+            })
+
+            // 旧版结构: g.edgePath > path
+            const edgePaths = svgEl.querySelectorAll('.edgePath')
+            console.log('[MermaidRenderer] Found .edgePath elements:', edgePaths.length)
+            edgePaths.forEach((ep, i) => {
+              console.log(`[MermaidRenderer] edgePath ${i}:`, ep.getAttribute('class'))
+              const path = ep.querySelector('path')
+              if (path) {
+                path.style.pointerEvents = 'stroke'
+                path.style.cursor = 'pointer'
+              }
+              ;(ep as SVGGElement).style.pointerEvents = 'auto'
+              ;(ep as SVGGElement).style.cursor = 'pointer'
+            })
+
+            // 检查 marker/arrowhead
+            const markers = svgEl.querySelectorAll('marker')
+            console.log('[MermaidRenderer] Found markers:', markers.length)
+
+            console.log('[MermaidRenderer] Total path elements:', svgEl.querySelectorAll('path').length)
+          }
+
           if (animationCSS) {
             injectStyles(containerRef.current, animationCSS)
           }
@@ -139,6 +227,14 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       }
     }
   }, [source, layout, theme, initialized, onRenderSuccess, onRenderError, onRenderStart])
+
+  // SVG 渲染完成后重新绑定事件监听器
+  useEffect(() => {
+    if (!isRendering && containerRef.current?.querySelector('svg')) {
+      console.log('[MermaidRenderer] SVG ready, binding events')
+      bindEdgeEvents()
+    }
+  }, [isRendering, bindEdgeEvents])
 
   useEffect(() => {
     if (containerRef.current && wrapperRef.current && !isRendering) {
@@ -264,7 +360,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     exportPng: handleExportPng,
     exportSvg: handleExportSvg,
     resetView: handleZoomReset,
-  }), [handleExportPng, handleExportSvg, handleZoomReset])
+    restoreEdgeSelection,
+  }), [handleExportPng, handleExportSvg, handleZoomReset, restoreEdgeSelection])
 
   const handleWheel = useCallback((e: WheelEvent) => {
     e.preventDefault()
@@ -361,11 +458,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onContextMenu={handleContextMenu}
+        onClick={(e) => console.log('[MermaidRenderer] wrapper onClick, target:', (e.target as Element).tagName, (e.target as Element).className)}
         style={{ cursor: isDragging ? 'grabbing' : 'default' }}
       >
         <div
           ref={containerRef}
-          className="w-full h-full p-4 will-change-transform"
+          className="w-full h-full p-4"
           style={{
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
             transformOrigin: '0 0',

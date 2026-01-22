@@ -20,7 +20,10 @@
       "Bash(npm install:*)",
       "Bash(ls:*)",
       "Bash(pnpm search:*)",
-      "Bash(npm search:*)"
+      "Bash(npm search:*)",
+      "Bash(pnpm lint:*)",
+      "Bash(curl:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

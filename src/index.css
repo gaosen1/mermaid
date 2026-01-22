@@ -121,3 +121,38 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Edge 动画 keyframes */
+@keyframes mermaid-edge-dash {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Edge 选中高亮样式 - 只在选中时显示 */
+path.edge-selected,
+path.flowchart-link.edge-selected {
+  stroke-width: 4px !important;
+  filter: drop-shadow(0 0 8px #3b82f6) !important;
+}
+
+/* 暗色主题下只修改连接线的颜色 - 精确选择器 */
+.dark path.flowchart-link {
+  stroke: #a1a1aa !important;
+}
+
+/* 暗色主题下修复箭头颜色 - 只针对 marker 内的 path */
+.dark svg defs marker path {
+  fill: #a1a1aa !important;
+}
+
+/* Edge 点击区域 - 透明扩展层 */
+path.edge-hitarea {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+/* 原线条禁用点击 */
+path.flowchart-link {
+  pointer-events: none;
+}

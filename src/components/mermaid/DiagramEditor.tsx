@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { CodeEditor } from './CodeEditor'
+import { EdgeStylePanel } from './EdgeStylePanel'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -18,6 +19,8 @@ import {
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown } from 'lucide-react'
+import { parseEdgeStyleFromSource, updateSourceWithEdgeStyle, type EdgeStyle } from '@/utils/edgeDsl'
+import type { SelectedEdge } from './useEdgeSelection'
 import type { LayoutType } from '@/types'
 
 const EDITOR_STORAGE_KEY = 'diagram-editor-state'
@@ -68,6 +71,10 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [isDarkMode, setIsDarkMode] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
   const rendererRef = useRef<MermaidRendererRef>(null)
+
+  // Edge 选中状态
+  const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null)
+  const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>({})
 
   const { source, layout, theme, hasChanges } = editorState
 
@@ -181,6 +188,52 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     rendererRef.current?.exportSvg()
   }, [])
 
+  // Edge 选中处理
+  const handleEdgeSelect = useCallback(
+    (edge: SelectedEdge | null) => {
+      setSelectedEdge(edge)
+      if (edge) {
+        // 解析当前 edge 的样式
+        const currentStyle = parseEdgeStyleFromSource(source, edge.index)
+        setEdgeStyle(currentStyle)
+      } else {
+        setEdgeStyle({})
+      }
+    },
+    [source]
+  )
+
+  // Edge 样式变化处理
+  const handleEdgeStyleChange = useCallback(
+    (newStyle: EdgeStyle) => {
+      if (!selectedEdge) return
+
+      setEdgeStyle(newStyle)
+
+      // 更新 source
+      const newSource = updateSourceWithEdgeStyle(source, {
+        index: selectedEdge.index,
+        style: newStyle,
+      })
+
+      setEditorState((prev) => ({ ...prev, source: newSource, hasChanges: true }))
+
+      // 重渲染后恢复选中状态
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          rendererRef.current?.restoreEdgeSelection()
+        }, 400) // 等待渲染完成
+      })
+    },
+    [selectedEdge, source]
+  )
+
+  // 关闭 Edge 样式面板
+  const handleEdgePanelClose = useCallback(() => {
+    setSelectedEdge(null)
+    setEdgeStyle({})
+  }, [])
+
   if (!currentDiagram) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -206,6 +259,8 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         theme={theme}
         className="absolute inset-0"
         showControls={true}
+        edgeSelectionEnabled={true}
+        onEdgeSelect={handleEdgeSelect}
       />
 
       {/* 浮层编辑器面板 - 左侧悬浮，紧靠侧边栏 */}
@@ -399,6 +454,15 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
           <PanelLeft className="h-4 w-4" />
         </Button>
       )}
+
+      {/* Edge 样式编辑面板 */}
+      <EdgeStylePanel
+        open={selectedEdge !== null}
+        position={selectedEdge?.position || { x: 0, y: 0 }}
+        currentStyle={edgeStyle}
+        onStyleChange={handleEdgeStyleChange}
+        onClose={handleEdgePanelClose}
+      />
     </div>
   )
 }
