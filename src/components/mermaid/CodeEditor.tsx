@@ -1,8 +1,8 @@
 import CodeMirror from '@uiw/react-codemirror'
-import { markdown } from '@codemirror/lang-markdown'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
 import { cn } from '@/lib/utils'
+import { mermaid } from 'codemirror-lang-mermaid'
 
 interface CodeEditorProps {
   value: string
@@ -16,7 +16,7 @@ interface CodeEditorProps {
 const baseTheme = EditorView.theme({
   '&': {
     height: '100%',
-    fontSize: '14px',
+    fontSize: '12px',
   },
   '.cm-scroller': {
     overflow: 'auto !important', // 确保横向和纵向都可滚动
@@ -101,7 +101,7 @@ export function CodeEditor({
         placeholder={placeholder}
         readOnly={readOnly}
         extensions={[
-          markdown(),
+          mermaid(),
           baseTheme,
           darkMode ? oneDark : lightTheme,
           darkMode ? darkThemeOverride : [],

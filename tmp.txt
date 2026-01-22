@@ -1,0 +1,72 @@
+[mermaid-lang] word: flowchart remaining was: flowchart TB
+[mermaid-lang] -> keyword
+[mermaid-lang] word: TB remaining was: TB
+[mermaid-lang] -> keyword
+[mermaid-lang] word: IN_TEXT remaining was: IN_TEXT["text_inputs
+[mermaid-lang] -> variableName
+[mermaid-lang] bracket content: ["text_inputs: token ids<br>text_mask: [B,96]"] remaining was: ["text_inputs: token ids<br>te
+[mermaid-lang] arrow: --> remaining was: --> ROBERTA["RoBERTa
+[mermaid-lang] word: ROBERTA remaining was: ROBERTA["RoBERTa<br>
+[mermaid-lang] -> variableName
+[mermaid-lang] bracket content: ["RoBERTa<br>(en_model.py: forward)<br>raw_output = roberta_model(...)"] remaining was: ["RoBERTa<br>(en_model.py: for
+[mermaid-lang] word: IN_AUDIO remaining was: IN_AUDIO["audio_inpu
+[mermaid-lang] -> variableName
+[mermaid-lang] bracket content: ["audio_inputs: waveform<br>raw audio_mask: [B,96000]"] remaining was: ["audio_inputs: waveform<br>ra
+[mermaid-lang] arrow: --> remaining was: --> D2V["Data2Vec<br
+[mermaid-lang] word: D2V remaining was: D2V["Data2Vec<br>(en
+[mermaid-lang] -> variableName
+[mermaid-lang] bracket content: ["Data2Vec<br>(en_model.py: forward)<br>audio_out = data2vec_model(...)"] remaining was: ["Data2Vec<br>(en_model.py: fo
+[mermaid-lang] ampersand
+[mermaid-lang] word: RAW2FRAME remaining was: RAW2FRAME["raw mask 
+[mermaid-lang] -> variableName
+[mermaid-lang] bracket content: ["raw mask → frame length<br>valid_raw_len=sum(raw_mask)<br>valid_seq_len≈valid_raw_len/320<br>(en_model.py: 音频mask换算段)"] remaining was: ["raw mask → frame length<br>v
+[mermaid-lang] word: style remaining was: style IN_TEXT fill:#
+[mermaid-lang] -> propertyName
+[mermaid-lang] word: IN_TEXT remaining was: IN_TEXT fill:#FFCCBC
+[mermaid-lang] -> variableName
+[mermaid-lang] word: fill remaining was: fill:#FFCCBC,stroke:
+[mermaid-lang] -> propertyName
+[mermaid-lang] punctuation: :
+[mermaid-lang] color: #FFCCBC
+[mermaid-lang] punctuation: ,
+[mermaid-lang] word: stroke remaining was: stroke:#333,stroke-w
+[mermaid-lang] -> propertyName
+[mermaid-lang] punctuation: :
+[mermaid-lang] color: #333
+[mermaid-lang] punctuation: ,
+[mermaid-lang] word: stroke remaining was: stroke-width:1px
+[mermaid-lang] -> propertyName
+[mermaid-lang] other char: -
+[mermaid-lang] word: width remaining was: width:1px
+[mermaid-lang] -> variableName
+[mermaid-lang] punctuation: :
+[mermaid-lang] number: 1px
+[mermaid-lang] word: style remaining was: style IN_AUDIO fill:
+[mermaid-lang] -> propertyName
+[mermaid-lang] word: IN_AUDIO remaining was: IN_AUDIO fill:#FFCCB
+[mermaid-lang] -> variableName
+[mermaid-lang] word: fill remaining was: fill:#FFCCBC,stroke:
+[mermaid-lang] -> propertyName
+[mermaid-lang] punctuation: :
+[mermaid-lang] color: #FFCCBC
+[mermaid-lang] punctuation: ,
+[mermaid-lang] word: stroke remaining was: stroke:#333,stroke-w
+[mermaid-lang] -> propertyName
+[mermaid-lang] punctuation: :
+[mermaid-lang] color: #333
+[mermaid-lang] punctuation: ,
+[mermaid-lang] word: stroke remaining was: stroke-width:1px
+[mermaid-lang] -> propertyName
+[mermaid-lang] other char: -
+[mermaid-lang] word: width remaining was: width:1px
+[mermaid-lang] -> variableName
+[mermaid-lang] punctuation: :
+[mermaid-lang] number: 1px
+[mermaid-lang] word: L_T_H_MIX_TEXT_CAT_0 remaining was: L_T_H_MIX_TEXT_CAT_0
+[mermaid-lang] -> variableName
+[mermaid-lang] at symbol
+[mermaid-lang] brace content: { animation: slow }
+[mermaid-lang] word: L_A_POOL_MIX_AUDIO_CAT_0 remaining was: L_A_POOL_MIX_AUDIO_C
+[mermaid-lang] -> variableName
+[mermaid-lang] at symbol
+[mermaid-lang] brace content: { animation: slow }

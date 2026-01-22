@@ -189,9 +189,12 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     )
   }
 
-  // 计算编辑器面板的左侧位置（紧靠侧边栏 + 分隔条）
-  // 当侧边栏收起时，留出侧边栏展开按钮的空间 (12px left + 40px button + 8px gap = 60px)
-  const editorLeft = sidebarWidth === 0 ? 52 : sidebarWidth + 4
+  // 计算编辑器面板的位置
+  // 当侧边栏收起时，编辑器面板位于展开按钮下方
+  // 当侧边栏展开时，编辑器面板紧靠侧边栏右侧
+  const editorLeft = sidebarWidth === 0 ? 12 : sidebarWidth + 4
+  const editorTop = sidebarWidth === 0 ? 60 : 12 // 12px (按钮 top) + 40px (按钮高度) + 8px (gap)
+  const editorBottom = 12
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -208,16 +211,18 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
       {/* 浮层编辑器面板 - 左侧悬浮，紧靠侧边栏 */}
       <div
         className={`
-          absolute top-3 bottom-3 z-20
+          absolute z-20
           flex flex-col
           bg-background/95 backdrop-blur-md
           border rounded-lg shadow-2xl
-          ${(isAnimating || sidebarAnimating) ? 'transition-[left,opacity] duration-300 ease-out' : ''}
+          ${(isAnimating || sidebarAnimating) ? 'transition-[left,top,bottom,opacity] duration-300 ease-out' : ''}
           ${panelState.collapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}
         `}
         style={{
           width: panelState.width,
           left: panelState.collapsed ? -panelState.width : editorLeft,
+          top: editorTop,
+          bottom: editorBottom,
         }}
         onMouseEnter={() => setIsPanelHovered(true)}
         onMouseLeave={() => setIsPanelHovered(false)}
@@ -384,8 +389,11 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
           variant="outline"
           size="icon"
           onClick={togglePanel}
-          className="absolute top-3 z-20 bg-background/80 backdrop-blur-sm shadow-lg transition-[left] duration-300 ease-out"
-          style={{ left: editorLeft }}
+          className="absolute z-20 bg-background/80 backdrop-blur-sm shadow-lg transition-[left,top] duration-300 ease-out"
+          style={{
+            left: editorLeft,
+            top: editorTop,
+          }}
           title="展开编辑器"
         >
           <PanelLeft className="h-4 w-4" />
