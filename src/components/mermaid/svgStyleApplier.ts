@@ -5,14 +5,9 @@
  */
 
 import type { EdgeStyle } from '@/utils/edgeDsl'
+import type { NodeStyle } from '@/utils/nodeDsl'
 
-/** 节点样式（预留扩展） */
-export interface NodeStyle {
-  fill?: string
-  stroke?: string
-  strokeWidth?: string
-  color?: string
-}
+export type { NodeStyle }
 
 /**
  * 查找指定索引的边缘元素
@@ -83,15 +78,15 @@ export function applyEdgeStyle(svg: SVGSVGElement, index: number, style: EdgeSty
 }
 
 /**
- * 查找指定 ID 的节点元素（预留扩展）
+ * 查找指定 ID 的节点元素
  */
 export function findNodeElement(
   svg: SVGSVGElement,
   nodeId: string
-): { shape: SVGElement | null; text: SVGElement | null } {
+): { group: SVGGElement | null; shape: SVGElement | null; text: SVGElement | null } {
   // Mermaid 节点结构: g.node[id="flowchart-{nodeId}-xxx"]
   const nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`)
-  if (!nodeGroup) return { shape: null, text: null }
+  if (!nodeGroup) return { group: null, shape: null, text: null }
 
   // 形状元素: rect, polygon, circle, ellipse
   const shape = nodeGroup.querySelector('rect, polygon, circle, ellipse')
@@ -99,27 +94,81 @@ export function findNodeElement(
   const text = nodeGroup.querySelector('g.label text, text')
 
   return {
+    group: nodeGroup as SVGGElement,
     shape: shape as SVGElement | null,
     text: text as SVGElement | null,
   }
 }
 
 /**
- * 应用节点样式（预留扩展）
+ * 将 NodeStyle 应用到 SVG 节点元素
+ */
+export function applyNodeStyleToElement(
+  shape: SVGElement,
+  text: SVGElement | null,
+  style: NodeStyle
+): void {
+  // 背景色
+  if (style.fill) {
+    shape.style.fill = style.fill
+  } else {
+    shape.style.removeProperty('fill')
+  }
+
+  // 边框颜色
+  if (style.stroke) {
+    shape.style.stroke = style.stroke
+  } else {
+    shape.style.removeProperty('stroke')
+  }
+
+  // 边框样式
+  switch (style.strokeType) {
+    case 'dotted':
+      shape.style.strokeDasharray = '5 5'
+      shape.style.strokeWidth = '1px'
+      break
+    case 'thick':
+      shape.style.strokeDasharray = ''
+      shape.style.strokeWidth = '3px'
+      break
+    case 'normal':
+    default:
+      shape.style.strokeDasharray = ''
+      shape.style.strokeWidth = '1px'
+      break
+  }
+
+  // 文字颜色
+  if (text) {
+    if (style.color) {
+      text.style.fill = style.color
+    } else {
+      text.style.removeProperty('fill')
+    }
+  }
+
+  // 动画
+  switch (style.animation) {
+    case 'pulse':
+      shape.style.animation = 'mermaid-node-pulse 2s ease-in-out infinite'
+      break
+    case 'blink':
+      shape.style.animation = 'mermaid-node-blink 1s step-start infinite'
+      break
+    case 'none':
+    default:
+      shape.style.removeProperty('animation')
+  }
+}
+
+/**
+ * 应用节点样式（主入口）
  */
 export function applyNodeStyle(svg: SVGSVGElement, nodeId: string, style: NodeStyle): boolean {
   const { shape, text } = findNodeElement(svg, nodeId)
-  if (!shape && !text) return false
+  if (!shape) return false
 
-  if (shape) {
-    if (style.fill) shape.style.fill = style.fill
-    if (style.stroke) shape.style.stroke = style.stroke
-    if (style.strokeWidth) shape.style.strokeWidth = style.strokeWidth
-  }
-
-  if (text && style.color) {
-    text.style.fill = style.color
-  }
-
+  applyNodeStyleToElement(shape, text, style)
   return true
 }

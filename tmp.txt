@@ -1,1 +1,25 @@
-1. 为每条箭头/连接线创建稍微更宽一点的透明点击扩展层，平时隐藏或完全透明，鼠标悬浮时线条变粗、添加蓝色发光阴影，选中后高亮效果。
+实现完成的节点编辑功能
+新增文件
+- nodeDsl.ts - 节点样式 DSL 解析和写回工具
+- useNodeSelection.ts - 节点选中逻辑 Hook
+- NodeStylePanel.tsx - 节点样式编辑面板
+- NodeTextEditor.tsx - 节点文字编辑器
+修改的文件
+- svgUtils.ts - 添加节点交互设置
+- svgStyleApplier.ts - 完善节点样式应用
+- useSourceSync.ts - 支持节点样式同步
+- MermaidRenderer.tsx - 集成节点功能
+- DiagramEditor.tsx - 集成面板和编辑器
+- index.css - 添加节点 CSS 样式
+- useViewTransform.ts - 修复类型导入
+功能特性
+- 背景色 - 18色调色板选择
+- 边框颜色 - 与背景色相同的调色板
+- 边框样式 - 普通、虚线、粗线
+- 文字颜色 - 18色调色板选择
+- 动画效果 - 脉冲、闪烁
+- 形状切换 - 方形、圆角、胶囊、菱形、六边形、圆形、平行四边形、梯形
+- 双击编辑文字 - Enter 保存，Shift+Enter 换行（对应 <br>），Esc 取消
+- 即时预览 + 防抖同步 - 采用与 Edge 相同的双轨机制，确保流畅的用户体验
+
+发现bug：设置文字颜色后，没有重新渲染对应节点，需要刷新页面才能生效；但请注意，不能直接重新渲染整个图，只需要重新渲染对应节点

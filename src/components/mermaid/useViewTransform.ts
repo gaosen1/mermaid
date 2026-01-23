@@ -2,7 +2,7 @@
  * 缩放和平移 Hook
  */
 
-import { useState, useRef, useCallback, useEffect, RefObject } from 'react'
+import { useState, useRef, useCallback, useEffect, type RefObject } from 'react'
 import { VIEW_CONFIG } from './constants'
 
 interface Position {

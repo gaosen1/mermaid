@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { CodeEditor } from './CodeEditor'
 import { EdgeStylePanel } from './EdgeStylePanel'
+import { NodeStylePanel } from './NodeStylePanel'
+import { NodeTextEditor } from './NodeTextEditor'
 import { useSourceSync } from './useSourceSync'
 import { Button } from '@/components/ui/button'
 import {
@@ -21,7 +23,15 @@ import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown } from 'lucide-react'
 import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
+import {
+  parseNodeStyleFromSource,
+  parseNodeShapeFromSource,
+  parseNodeTextFromSource,
+  type NodeStyle,
+  type NodeShape,
+} from '@/utils/nodeDsl'
 import type { SelectedEdge } from './useEdgeSelection'
+import type { SelectedNode } from './useNodeSelection'
 import type { LayoutType } from '@/types'
 
 const EDITOR_STORAGE_KEY = 'diagram-editor-state'
@@ -78,11 +88,21 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>({})
   const [lastEdgePosition, setLastEdgePosition] = useState({ x: 0, y: 0 })
 
+  // Node 选中状态
+  const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
+  const [nodeStyle, setNodeStyle] = useState<NodeStyle>({})
+  const [nodeShape, setNodeShape] = useState<NodeShape | null>(null)
+  const [lastNodePosition, setLastNodePosition] = useState({ x: 0, y: 0 })
+  const [isEditingNodeText, setIsEditingNodeText] = useState(false)
+  const [editingNodeText, setEditingNodeText] = useState('')
+  const [editingNodeBounds, setEditingNodeBounds] = useState({ x: 0, y: 0, width: 0, height: 0 })
+  const [currentScale, setCurrentScale] = useState(1)
+
   // 提前解构 source，供 useSourceSync 使用
   const { source, layout, theme, hasChanges } = editorState
 
   // 源码同步（防抖）
-  const { recordStyleChange, flushChanges } = useSourceSync({
+  const { recordStyleChange, recordShapeChange, recordTextChange, flushChanges } = useSourceSync({
     source,
     onSourceChange: (newSource) => {
       // 先标记这个 source 是样式变更产生的，跳过重渲染
@@ -242,6 +262,98 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     setEdgeStyle({})
   }, [flushChanges])
 
+  // Node 选中处理
+  const handleNodeSelect = useCallback(
+    (node: SelectedNode | null) => {
+      setSelectedNode(node)
+      if (node) {
+        // 保存位置，供关闭时使用
+        setLastNodePosition(node.position)
+        setEditingNodeBounds(node.bounds)
+        // 解析当前 node 的样式和形状
+        const currentStyle = parseNodeStyleFromSource(source, node.id)
+        const currentShape = parseNodeShapeFromSource(source, node.id)
+        setNodeStyle(currentStyle)
+        setNodeShape(currentShape)
+      } else {
+        setNodeStyle({})
+        setNodeShape(null)
+      }
+    },
+    [source]
+  )
+
+  // Node 样式变化处理
+  const handleNodeStyleChange = useCallback(
+    (newStyle: NodeStyle) => {
+      if (!selectedNode) return
+
+      setNodeStyle(newStyle)
+
+      // 1. 直接应用到 SVG（即时预览，无重渲染）
+      rendererRef.current?.applyNodeStyleDirect(selectedNode.id, newStyle)
+
+      // 2. 延迟同步到 source（防抖 500ms）
+      recordStyleChange('node', selectedNode.id, newStyle)
+    },
+    [selectedNode, recordStyleChange]
+  )
+
+  // Node 形状变化处理
+  const handleNodeShapeChange = useCallback(
+    (newShape: NodeShape) => {
+      if (!selectedNode) return
+
+      setNodeShape(newShape)
+
+      // 形状变更需要重渲染，不能即时预览
+      // 直接同步到 source
+      recordShapeChange(selectedNode.id, newShape)
+    },
+    [selectedNode, recordShapeChange]
+  )
+
+  // Node 双击编辑文字
+  const handleNodeDoubleClick = useCallback(
+    (node: SelectedNode) => {
+      const text = parseNodeTextFromSource(source, node.id)
+      setEditingNodeText(text)
+      setEditingNodeBounds(node.bounds)
+      // 在事件处理中获取 scale
+      const scale = rendererRef.current?.getScale() || 1
+      setCurrentScale(scale)
+      setIsEditingNodeText(true)
+    },
+    [source]
+  )
+
+  // Node 文字保存
+  const handleNodeTextSave = useCallback(
+    (text: string) => {
+      if (!selectedNode) return
+
+      setIsEditingNodeText(false)
+
+      // 文字变更需要重渲染
+      recordTextChange(selectedNode.id, text)
+    },
+    [selectedNode, recordTextChange]
+  )
+
+  // Node 文字取消
+  const handleNodeTextCancel = useCallback(() => {
+    setIsEditingNodeText(false)
+  }, [])
+
+  // 关闭 Node 样式面板
+  const handleNodePanelClose = useCallback(() => {
+    flushChanges() // 立即同步待处理的变更
+    rendererRef.current?.clearNodeSelection() // 清除选中样式
+    setSelectedNode(null)
+    setNodeStyle({})
+    setNodeShape(null)
+  }, [flushChanges])
+
   if (!currentDiagram) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -268,7 +380,10 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         className="absolute inset-0"
         showControls={true}
         edgeSelectionEnabled={true}
+        nodeSelectionEnabled={true}
         onEdgeSelect={handleEdgeSelect}
+        onNodeSelect={handleNodeSelect}
+        onNodeDoubleClick={handleNodeDoubleClick}
       />
 
       {/* 浮层编辑器面板 - 左侧悬浮，紧靠侧边栏 */}
@@ -470,6 +585,27 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         currentStyle={edgeStyle}
         onStyleChange={handleEdgeStyleChange}
         onClose={handleEdgePanelClose}
+      />
+
+      {/* Node 样式编辑面板 */}
+      <NodeStylePanel
+        open={selectedNode !== null && !isEditingNodeText}
+        position={selectedNode?.position || lastNodePosition}
+        currentStyle={nodeStyle}
+        currentShape={nodeShape}
+        onStyleChange={handleNodeStyleChange}
+        onShapeChange={handleNodeShapeChange}
+        onClose={handleNodePanelClose}
+      />
+
+      {/* Node 文字编辑器 */}
+      <NodeTextEditor
+        open={isEditingNodeText}
+        bounds={editingNodeBounds}
+        initialText={editingNodeText}
+        scale={currentScale}
+        onSave={handleNodeTextSave}
+        onCancel={handleNodeTextCancel}
       />
     </div>
   )

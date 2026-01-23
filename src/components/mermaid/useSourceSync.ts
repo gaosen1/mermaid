@@ -6,12 +6,33 @@
 
 import { useCallback, useRef, useEffect } from 'react'
 import { updateSourceWithEdgeStyle, type EdgeStyle } from '@/utils/edgeDsl'
+import {
+  updateSourceWithNodeStyle,
+  updateSourceWithNodeShape,
+  updateSourceWithNodeText,
+  type NodeStyle,
+  type NodeShape,
+} from '@/utils/nodeDsl'
 
-interface PendingChange {
+interface PendingStyleChange {
   type: 'edge' | 'node'
   id: number | string
-  style: EdgeStyle
+  style: EdgeStyle | NodeStyle
 }
+
+interface PendingShapeChange {
+  type: 'nodeShape'
+  id: string
+  shape: NodeShape
+}
+
+interface PendingTextChange {
+  type: 'nodeText'
+  id: string
+  text: string
+}
+
+type PendingChange = PendingStyleChange | PendingShapeChange | PendingTextChange
 
 interface UseSourceSyncOptions {
   source: string
@@ -46,10 +67,19 @@ export function useSourceSync({
       if (change.type === 'edge') {
         newSource = updateSourceWithEdgeStyle(newSource, {
           index: change.id as number,
-          style: change.style,
+          style: change.style as EdgeStyle,
         })
+      } else if (change.type === 'node') {
+        newSource = updateSourceWithNodeStyle(
+          newSource,
+          change.id as string,
+          change.style as NodeStyle
+        )
+      } else if (change.type === 'nodeShape') {
+        newSource = updateSourceWithNodeShape(newSource, change.id, change.shape)
+      } else if (change.type === 'nodeText') {
+        newSource = updateSourceWithNodeText(newSource, change.id, change.text)
       }
-      // 未来扩展：节点样式同步
     })
 
     pendingChangesRef.current.clear()
@@ -58,9 +88,37 @@ export function useSourceSync({
 
   /** 记录样式变更（防抖同步） */
   const recordStyleChange = useCallback(
-    (type: 'edge' | 'node', id: number | string, style: EdgeStyle) => {
+    (type: 'edge' | 'node', id: number | string, style: EdgeStyle | NodeStyle) => {
       const key = `${type}-${id}`
       pendingChangesRef.current.set(key, { type, id, style })
+
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
+      timerRef.current = window.setTimeout(doSync, debounceMs)
+    },
+    [debounceMs, doSync]
+  )
+
+  /** 记录形状变更（防抖同步） */
+  const recordShapeChange = useCallback(
+    (nodeId: string, shape: NodeShape) => {
+      const key = `nodeShape-${nodeId}`
+      pendingChangesRef.current.set(key, { type: 'nodeShape', id: nodeId, shape })
+
+      if (timerRef.current) {
+        clearTimeout(timerRef.current)
+      }
+      timerRef.current = window.setTimeout(doSync, debounceMs)
+    },
+    [debounceMs, doSync]
+  )
+
+  /** 记录文字变更（防抖同步） */
+  const recordTextChange = useCallback(
+    (nodeId: string, text: string) => {
+      const key = `nodeText-${nodeId}`
+      pendingChangesRef.current.set(key, { type: 'nodeText', id: nodeId, text })
 
       if (timerRef.current) {
         clearTimeout(timerRef.current)
@@ -104,6 +162,8 @@ export function useSourceSync({
 
   return {
     recordStyleChange,
+    recordShapeChange,
+    recordTextChange,
     flushChanges,
     cancelPendingChanges,
     hasPendingChanges,

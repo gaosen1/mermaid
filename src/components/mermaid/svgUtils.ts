@@ -85,3 +85,81 @@ export function setupSvgEdgeInteraction(svg: SVGSVGElement): void {
   const edgePaths = svg.querySelectorAll('.edgePath')
   edgePaths.forEach((ep) => setupEdgePath(ep))
 }
+
+/**
+ * 设置 SVG 元素的节点点击支持
+ */
+export function setupSvgNodeInteraction(svg: SVGSVGElement): void {
+  // 为所有 g.node 设置交互样式
+  const nodes = svg.querySelectorAll('g.node')
+  nodes.forEach((node) => {
+    const nodeEl = node as SVGGElement
+    nodeEl.style.cursor = 'pointer'
+    nodeEl.style.pointerEvents = 'auto'
+
+    // 确保形状元素可点击
+    const shapes = node.querySelectorAll('rect, polygon, circle, ellipse, path')
+    shapes.forEach((shape) => {
+      ;(shape as SVGElement).style.pointerEvents = 'auto'
+    })
+  })
+}
+
+/**
+ * 从 SVG 元素提取节点 ID
+ * Mermaid 生成的节点 ID 格式: flowchart-{nodeId}-{index}
+ */
+export function getNodeIdFromElement(element: Element): string | null {
+  // 向上查找 g.node 元素
+  const nodeGroup = element.closest('g.node')
+  if (!nodeGroup) return null
+
+  const id = nodeGroup.getAttribute('id')
+  if (!id) return null
+
+  // 匹配 flowchart-{nodeId}-{index} 格式
+  const match = id.match(/^flowchart-(.+?)-\d+$/)
+  return match ? match[1] : null
+}
+
+/**
+ * 获取节点的屏幕坐标边界
+ */
+export function getNodeBounds(nodeGroup: SVGGElement, containerRect: DOMRect): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  const bbox = nodeGroup.getBBox()
+  const svg = nodeGroup.ownerSVGElement
+  if (!svg) {
+    return { x: 0, y: 0, width: 0, height: 0 }
+  }
+
+  // 获取 SVG 的 CTM (Current Transform Matrix)
+  const ctm = nodeGroup.getCTM()
+  if (!ctm) {
+    return { x: 0, y: 0, width: 0, height: 0 }
+  }
+
+  // 创建 SVG 点并转换
+  const point = svg.createSVGPoint()
+
+  // 左上角
+  point.x = bbox.x
+  point.y = bbox.y
+  const topLeft = point.matrixTransform(ctm)
+
+  // 右下角
+  point.x = bbox.x + bbox.width
+  point.y = bbox.y + bbox.height
+  const bottomRight = point.matrixTransform(ctm)
+
+  return {
+    x: topLeft.x + containerRect.left,
+    y: topLeft.y + containerRect.top,
+    width: bottomRight.x - topLeft.x,
+    height: bottomRight.y - topLeft.y,
+  }
+}

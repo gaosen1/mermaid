@@ -6,12 +6,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
 import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
+import { useNodeSelection, type SelectedNode } from './useNodeSelection'
 import { useViewTransform } from './useViewTransform'
-import { cleanupMermaidErrors, setupSvgEdgeInteraction } from './svgUtils'
-import { applyEdgeStyle } from './svgStyleApplier'
+import { cleanupMermaidErrors, setupSvgEdgeInteraction, setupSvgNodeInteraction } from './svgUtils'
+import { applyEdgeStyle, applyNodeStyle } from './svgStyleApplier'
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
 import type { EdgeStyle } from '@/utils/edgeDsl'
+import type { NodeStyle } from '@/utils/nodeDsl'
 
 export interface MermaidRendererRef {
   exportPng: () => Promise<void>
@@ -20,8 +22,12 @@ export interface MermaidRendererRef {
   restoreEdgeSelection: () => void
   clearEdgeSelection: () => void
   applyEdgeStyleDirect: (index: number, style: EdgeStyle) => boolean
+  restoreNodeSelection: () => void
+  clearNodeSelection: () => void
+  applyNodeStyleDirect: (nodeId: string, style: NodeStyle) => boolean
   getSvgElement: () => SVGSVGElement | null
   markStyleOnlySource: (source: string) => void
+  getScale: () => number
 }
 
 interface MermaidRendererProps {
@@ -31,10 +37,13 @@ interface MermaidRendererProps {
   className?: string
   showControls?: boolean
   edgeSelectionEnabled?: boolean
+  nodeSelectionEnabled?: boolean
   onRenderSuccess?: () => void
   onRenderError?: (error: string) => void
   onRenderStart?: () => void
   onEdgeSelect?: (edge: SelectedEdge | null) => void
+  onNodeSelect?: (node: SelectedNode | null) => void
+  onNodeDoubleClick?: (node: SelectedNode) => void
 }
 
 export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererProps>(
@@ -46,10 +55,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       className = '',
       showControls = true,
       edgeSelectionEnabled = false,
+      nodeSelectionEnabled = false,
       onRenderSuccess,
       onRenderError,
       onRenderStart,
       onEdgeSelect,
+      onNodeSelect,
+      onNodeDoubleClick,
     },
     ref
   ) => {
@@ -84,6 +96,19 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       containerRef,
       enabled: edgeSelectionEnabled,
       onSelect: onEdgeSelect,
+    })
+
+    // 节点选中
+    const {
+      restoreSelection: restoreNodeSelection,
+      clearSelection: clearNodeSelection,
+      bindEvents: bindNodeEvents,
+    } = useNodeSelection({
+      containerRef,
+      wrapperRef,
+      enabled: nodeSelectionEnabled,
+      onSelect: onNodeSelect,
+      onDoubleClick: onNodeDoubleClick,
     })
 
     // 初始化 Mermaid
@@ -141,6 +166,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             const svgEl = containerRef.current.querySelector('svg') as SVGSVGElement
             if (svgEl) {
               setupSvgEdgeInteraction(svgEl)
+              setupSvgNodeInteraction(svgEl)
             }
 
             if (animationCSS) {
@@ -175,6 +201,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         bindEdgeEvents()
       }
     }, [isRendering, bindEdgeEvents])
+
+    // SVG 渲染完成后绑定节点事件
+    useEffect(() => {
+      if (!isRendering && containerRef.current?.querySelector('svg')) {
+        bindNodeEvents()
+      }
+    }, [isRendering, bindNodeEvents])
 
     // 初始渲染后自适应容器
     useEffect(() => {
@@ -225,12 +258,20 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           if (!svg) return false
           return applyEdgeStyle(svg, index, style)
         },
+        restoreNodeSelection,
+        clearNodeSelection,
+        applyNodeStyleDirect: (nodeId: string, style: NodeStyle) => {
+          const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
+          if (!svg) return false
+          return applyNodeStyle(svg, nodeId, style)
+        },
         getSvgElement: () => containerRef.current?.querySelector('svg') as SVGSVGElement | null,
         markStyleOnlySource: (newSource: string) => {
           styleOnlySourceRef.current = newSource
         },
+        getScale: () => scale,
       }),
-      [handleExportPng, handleExportSvg, resetView, restoreEdgeSelection, clearEdgeSelection]
+      [handleExportPng, handleExportSvg, resetView, restoreEdgeSelection, clearEdgeSelection, restoreNodeSelection, clearNodeSelection, scale]
     )
 
     return (

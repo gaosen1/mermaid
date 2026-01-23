@@ -156,3 +156,51 @@ path.edge-hitarea {
 path.flowchart-link {
   pointer-events: none;
 }
+
+/* ========== Node 样式 ========== */
+
+/* Node 可点击提示 */
+g.node {
+  cursor: pointer;
+}
+
+/* Node 选中高亮样式 */
+g.node.node-selected > rect,
+g.node.node-selected > polygon,
+g.node.node-selected > circle,
+g.node.node-selected > ellipse,
+g.node.node-selected > path {
+  filter: drop-shadow(0 0 8px #3b82f6) !important;
+  stroke-width: 2px !important;
+}
+
+/* Node 动画 keyframes */
+@keyframes mermaid-node-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes mermaid-node-blink {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* Node 动画类 */
+g.node.node-pulse {
+  animation: mermaid-node-pulse 1.5s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+g.node.node-blink {
+  animation: mermaid-node-blink 1s ease-in-out infinite;
+}
