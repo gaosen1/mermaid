@@ -6,10 +6,11 @@ import { Toaster } from '@/components/ui/sonner'
 import { HomePage } from '@/pages/HomePage'
 import { ProjectPage } from '@/pages/ProjectPage'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { FolderKanban, Settings, Moon, Sun, Monitor } from 'lucide-react'
+import { MermaidThemeTestPage } from '@/pages/MermaidThemeTestPage'
+import { FolderKanban, Settings, Moon, Sun, Monitor, TestTube } from 'lucide-react'
 import type { Project } from '@/types'
 
-type View = 'home' | 'project' | 'settings'
+type View = 'home' | 'project' | 'settings' | 'theme-test'
 
 export function AppLayout() {
   const { settings, loadSettings, updateSettings } = useSettingsStore()
@@ -81,6 +82,14 @@ export function AppLayout() {
         >
           <Settings className="h-5 w-5" />
         </Button>
+        <Button
+          variant={view === 'theme-test' ? 'secondary' : 'ghost'}
+          size="icon"
+          onClick={() => setView('theme-test')}
+          title="主题测试"
+        >
+          <TestTube className="h-5 w-5" />
+        </Button>
         <div className="flex-1" />
         <Separator className="w-8" />
         <Button variant="ghost" size="icon" onClick={cycleTheme} title="切换主题">
@@ -94,6 +103,7 @@ export function AppLayout() {
           <ProjectPage projectId={selectedProjectId} onBack={handleBackToHome} />
         )}
         {view === 'settings' && <SettingsPage />}
+        {view === 'theme-test' && <MermaidThemeTestPage />}
       </main>
 
       <Toaster />
