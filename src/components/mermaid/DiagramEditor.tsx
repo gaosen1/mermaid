@@ -104,9 +104,11 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   // 源码同步（防抖）
   const { recordStyleChange, recordShapeChange, recordTextChange, flushChanges } = useSourceSync({
     source,
-    onSourceChange: (newSource) => {
-      // 先标记这个 source 是样式变更产生的，跳过重渲染
-      rendererRef.current?.markStyleOnlySource(newSource)
+    onSourceChange: (newSource, isStyleOnly) => {
+      // 只有纯样式变更才标记跳过重渲染，形状和文字变更需要重新渲染
+      if (isStyleOnly) {
+        rendererRef.current?.markStyleOnlySource(newSource)
+      }
       setEditorState((prev) => ({ ...prev, source: newSource, hasChanges: true }))
     },
   })

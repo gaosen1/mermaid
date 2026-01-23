@@ -72,8 +72,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     const [isRendering, setIsRendering] = useState(false)
     const renderIdRef = useRef(0)
     const debounceTimerRef = useRef<number | null>(null)
+    // leading edge debounce：记录上次渲染时间
+    const lastRenderTimeRef = useRef(0)
     // 记录样式变更产生的 source，用于跳过重渲染
     const styleOnlySourceRef = useRef<string | null>(null)
+    // 记录是否已经首次渲染，避免重渲染时重置视图
+    const hasRenderedOnceRef = useRef(false)
 
     // 视图变换（缩放、平移）
     const {
@@ -138,9 +142,15 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
       const currentRenderId = ++renderIdRef.current
 
-      debounceTimerRef.current = window.setTimeout(async () => {
+      // 渲染函数
+      const doRender = async () => {
+        lastRenderTimeRef.current = Date.now()
         cleanupMermaidErrors()
-        setIsRendering(true)
+        // 双缓冲：不立即显示 loading，保留旧 SVG
+        const isRerender = hasRenderedOnceRef.current
+        if (!isRerender) {
+          setIsRendering(true)
+        }
         onRenderStart?.()
 
         try {
@@ -154,13 +164,23 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           const animationCSS = generateAnimationCSS(animations)
 
           const containerId = `mermaid-render-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+          // 隐藏 mermaid 渲染时创建的临时容器，防止闪烁
+          const hideStyle = document.createElement('style')
+          hideStyle.id = 'mermaid-temp-hide'
+          hideStyle.textContent = `body > div[id^="dmermaid-render-"] { visibility: hidden !important; position: absolute !important; left: -9999px !important; }`
+          document.head.appendChild(hideStyle)
+
           const { svg } = await renderMermaid(processedSource, containerId)
 
+          // 移除隐藏样式
+          hideStyle.remove()
           cleanupMermaidErrors()
 
           if (currentRenderId !== renderIdRef.current) return
 
           if (containerRef.current) {
+            // 双缓冲：直接替换 SVG（旧 SVG 保留到新 SVG 准备好）
             containerRef.current.innerHTML = svg
 
             const svgEl = containerRef.current.querySelector('svg') as SVGSVGElement
@@ -175,6 +195,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
             setError(null)
             setIsRendering(false)
+            hasRenderedOnceRef.current = true
             onRenderSuccess?.()
           }
         } catch (err) {
@@ -186,7 +207,20 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           setIsRendering(false)
           onRenderError?.(errorMessage)
         }
-      }, RENDER_CONFIG.DEBOUNCE_DELAY)
+      }
+
+      // Leading edge debounce：计算距离上次渲染的时间
+      const timeSinceLastRender = Date.now() - lastRenderTimeRef.current
+      const delay = RENDER_CONFIG.DEBOUNCE_DELAY
+
+      if (timeSinceLastRender >= delay) {
+        // 超过防抖时间，立即执行
+        doRender()
+      } else {
+        // 未超过防抖时间，等待剩余时间后执行
+        const remainingTime = delay - timeSinceLastRender
+        debounceTimerRef.current = window.setTimeout(doRender, remainingTime)
+      }
 
       return () => {
         if (debounceTimerRef.current) {
@@ -209,9 +243,9 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       }
     }, [isRendering, bindNodeEvents])
 
-    // 初始渲染后自适应容器
+    // 初始渲染后自适应容器（只在首次渲染时执行）
     useEffect(() => {
-      if (!isRendering && containerRef.current?.querySelector('svg')) {
+      if (!isRendering && containerRef.current?.querySelector('svg') && !hasRenderedOnceRef.current) {
         requestAnimationFrame(fitToContainer)
       }
     }, [isRendering, fitToContainer])

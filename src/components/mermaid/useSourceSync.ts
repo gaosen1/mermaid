@@ -36,7 +36,7 @@ type PendingChange = PendingStyleChange | PendingShapeChange | PendingTextChange
 
 interface UseSourceSyncOptions {
   source: string
-  onSourceChange: (newSource: string) => void
+  onSourceChange: (newSource: string, isStyleOnly: boolean) => void
   debounceMs?: number
 }
 
@@ -62,6 +62,7 @@ export function useSourceSync({
     if (changes.size === 0) return
 
     let newSource = sourceRef.current
+    let hasStructuralChange = false
 
     changes.forEach((change) => {
       if (change.type === 'edge') {
@@ -77,13 +78,16 @@ export function useSourceSync({
         )
       } else if (change.type === 'nodeShape') {
         newSource = updateSourceWithNodeShape(newSource, change.id, change.shape)
+        hasStructuralChange = true
       } else if (change.type === 'nodeText') {
         newSource = updateSourceWithNodeText(newSource, change.id, change.text)
+        hasStructuralChange = true
       }
     })
 
     pendingChangesRef.current.clear()
-    onSourceChange(newSource)
+    // isStyleOnly = 没有结构变更
+    onSourceChange(newSource, !hasStructuralChange)
   }, [onSourceChange])
 
   /** 记录样式变更（防抖同步） */

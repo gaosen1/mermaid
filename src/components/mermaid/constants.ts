@@ -26,6 +26,8 @@ export const EDGE_CONFIG = {
 
 /** 渲染配置 */
 export const RENDER_CONFIG = {
-  /** 防抖延迟（毫秒） */
+  /** 用户输入时的防抖延迟（毫秒） */
   DEBOUNCE_DELAY: 300,
+  /** UI 操作（如切换形状）的防抖延迟（毫秒） */
+  UI_ACTION_DELAY: 50,
 } as const
