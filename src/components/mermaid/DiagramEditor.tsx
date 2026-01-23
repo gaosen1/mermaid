@@ -76,6 +76,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   // Edge 选中状态
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null)
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>({})
+  const [lastEdgePosition, setLastEdgePosition] = useState({ x: 0, y: 0 })
 
   // 提前解构 source，供 useSourceSync 使用
   const { source, layout, theme, hasChanges } = editorState
@@ -205,6 +206,8 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     (edge: SelectedEdge | null) => {
       setSelectedEdge(edge)
       if (edge) {
+        // 保存位置，供关闭时使用
+        setLastEdgePosition(edge.position)
         // 解析当前 edge 的样式
         const currentStyle = parseEdgeStyleFromSource(source, edge.index)
         setEdgeStyle(currentStyle)
@@ -463,7 +466,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
       {/* Edge 样式编辑面板 */}
       <EdgeStylePanel
         open={selectedEdge !== null}
-        position={selectedEdge?.position || { x: 0, y: 0 }}
+        position={selectedEdge?.position || lastEdgePosition}
         currentStyle={edgeStyle}
         onStyleChange={handleEdgeStyleChange}
         onClose={handleEdgePanelClose}

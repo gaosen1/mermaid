@@ -1,8 +1,20 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import mermaid from 'mermaid'
+import * as Popover from '@radix-ui/react-popover'
 
 export function MermaidThemeTestPage() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const [anchorPopoverOpen, setAnchorPopoverOpen] = useState(false)
+  const [anchorPosition] = useState({ x: 400, y: 300 })
+  const anchorRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (anchorRef.current) {
+      anchorRef.current.style.left = `${anchorPosition.x}px`
+      anchorRef.current.style.top = `${anchorPosition.y}px`
+    }
+  }, [anchorPosition])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -193,6 +205,122 @@ export function MermaidThemeTestPage() {
               <br />
               {'}'})
             </p>
+          </div>
+
+          {/* Popover 测试 */}
+          <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold mb-3">测试 1: Popover with Trigger</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                使用 PopoverTrigger 的标准方式
+              </p>
+              
+              <Popover.Root open={popoverOpen} onOpenChange={setPopoverOpen}>
+                <Popover.Trigger asChild>
+                  <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90">
+                    点击打开 Popover
+                  </button>
+                </Popover.Trigger>
+                
+                <Popover.Portal>
+                  <Popover.Content
+                    className="w-64 p-4 bg-popover text-popover-foreground border border-border rounded-md shadow-lg
+                      data-[state=open]:animate-in data-[state=closed]:animate-out 
+                      data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 
+                      data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 
+                      data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 
+                      data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+                    sideOffset={8}
+                    side="right"
+                  >
+                    <h3 className="font-semibold mb-2">测试 Popover</h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      关闭时观察是否有闪烁
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['红', '绿', '蓝', '黄', '紫', '橙'].map((color) => (
+                        <div
+                          key={color}
+                          className="h-8 flex items-center justify-center bg-muted rounded text-xs"
+                        >
+                          {color}
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setPopoverOpen(false)}
+                      className="mt-3 w-full px-3 py-1.5 text-sm bg-secondary text-secondary-foreground rounded hover:bg-secondary/80"
+                    >
+                      关闭
+                    </button>
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover.Root>
+            </div>
+
+            <div>
+              <h2 className="text-lg font-semibold mb-3">测试 2: Popover with Anchor (模拟 EdgeStylePanel)</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                使用 PopoverAnchor + fixed 定位的虚拟锚点
+              </p>
+              
+              <button
+                onClick={() => setAnchorPopoverOpen(true)}
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                点击打开 Anchor Popover
+              </button>
+
+              <Popover.Root open={anchorPopoverOpen} onOpenChange={(open) => !open && setAnchorPopoverOpen(false)}>
+                <Popover.Anchor asChild>
+                  <div
+                    ref={anchorRef}
+                    className="fixed pointer-events-none"
+                    style={{
+                      left: anchorPosition.x,
+                      top: anchorPosition.y,
+                      width: 1,
+                      height: 1,
+                    }}
+                  />
+                </Popover.Anchor>
+
+                <Popover.Portal>
+                  <Popover.Content
+                    className="w-64 p-4 bg-popover text-popover-foreground border border-border rounded-md shadow-lg
+                      data-[state=open]:animate-in data-[state=closed]:animate-out 
+                      data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 
+                      data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 
+                      data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 
+                      data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2"
+                    sideOffset={8}
+                    side="right"
+                    align="start"
+                  >
+                    <h3 className="font-semibold mb-2">Anchor Popover</h3>
+                    <p className="text-sm text-muted-foreground mb-3">
+                      这个使用虚拟锚点定位，和 EdgeStylePanel 一样
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['红', '绿', '蓝', '黄', '紫', '橙'].map((color) => (
+                        <div
+                          key={color}
+                          className="h-8 flex items-center justify-center bg-muted rounded text-xs"
+                        >
+                          {color}
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setAnchorPopoverOpen(false)}
+                      className="mt-3 w-full px-3 py-1.5 text-sm bg-secondary text-secondary-foreground rounded hover:bg-secondary/80"
+                    >
+                      关闭
+                    </button>
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover.Root>
+            </div>
           </div>
         </div>
 

@@ -122,8 +122,8 @@ export function EdgeStylePanel({
           ref={anchorRef}
           className="fixed pointer-events-none"
           style={{
-            left: position.x,
-            top: position.y,
+            left: `${position.x}px`,
+            top: `${position.y}px`,
             width: 1,
             height: 1,
           }}
