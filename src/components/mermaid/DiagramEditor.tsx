@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { CodeEditor } from './CodeEditor'
 import { EdgeStylePanel } from './EdgeStylePanel'
+import { useSourceSync } from './useSourceSync'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -19,7 +20,7 @@ import {
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown } from 'lucide-react'
-import { parseEdgeStyleFromSource, updateSourceWithEdgeStyle, type EdgeStyle } from '@/utils/edgeDsl'
+import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import type { SelectedEdge } from './useEdgeSelection'
 import type { LayoutType } from '@/types'
 
@@ -76,7 +77,18 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [selectedEdge, setSelectedEdge] = useState<SelectedEdge | null>(null)
   const [edgeStyle, setEdgeStyle] = useState<EdgeStyle>({})
 
+  // 提前解构 source，供 useSourceSync 使用
   const { source, layout, theme, hasChanges } = editorState
+
+  // 源码同步（防抖）
+  const { recordStyleChange, flushChanges } = useSourceSync({
+    source,
+    onSourceChange: (newSource) => {
+      // 先标记这个 source 是样式变更产生的，跳过重渲染
+      rendererRef.current?.markStyleOnlySource(newSource)
+      setEditorState((prev) => ({ ...prev, source: newSource, hasChanges: true }))
+    },
+  })
 
   // 监听实际应用的主题（包括跟随系统的情况）
   useEffect(() => {
@@ -210,29 +222,22 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
       setEdgeStyle(newStyle)
 
-      // 更新 source
-      const newSource = updateSourceWithEdgeStyle(source, {
-        index: selectedEdge.index,
-        style: newStyle,
-      })
+      // 1. 直接应用到 SVG（即时预览，无重渲染）
+      rendererRef.current?.applyEdgeStyleDirect(selectedEdge.index, newStyle)
 
-      setEditorState((prev) => ({ ...prev, source: newSource, hasChanges: true }))
-
-      // 重渲染后恢复选中状态
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          rendererRef.current?.restoreEdgeSelection()
-        }, 400) // 等待渲染完成
-      })
+      // 2. 延迟同步到 source（防抖 500ms）
+      recordStyleChange('edge', selectedEdge.index, newStyle)
     },
-    [selectedEdge, source]
+    [selectedEdge, recordStyleChange]
   )
 
   // 关闭 Edge 样式面板
   const handleEdgePanelClose = useCallback(() => {
+    flushChanges() // 立即同步待处理的变更
+    rendererRef.current?.clearEdgeSelection() // 清除选中样式
     setSelectedEdge(null)
     setEdgeStyle({})
-  }, [])
+  }, [flushChanges])
 
   if (!currentDiagram) {
     return (

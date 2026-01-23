@@ -8,14 +8,20 @@ import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
 import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useViewTransform } from './useViewTransform'
 import { cleanupMermaidErrors, setupSvgEdgeInteraction } from './svgUtils'
+import { applyEdgeStyle } from './svgStyleApplier'
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
+import type { EdgeStyle } from '@/utils/edgeDsl'
 
 export interface MermaidRendererRef {
   exportPng: () => Promise<void>
   exportSvg: () => void
   resetView: () => void
   restoreEdgeSelection: () => void
+  clearEdgeSelection: () => void
+  applyEdgeStyleDirect: (index: number, style: EdgeStyle) => boolean
+  getSvgElement: () => SVGSVGElement | null
+  markStyleOnlySource: (source: string) => void
 }
 
 interface MermaidRendererProps {
@@ -54,6 +60,8 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     const [isRendering, setIsRendering] = useState(false)
     const renderIdRef = useRef(0)
     const debounceTimerRef = useRef<number | null>(null)
+    // 记录样式变更产生的 source，用于跳过重渲染
+    const styleOnlySourceRef = useRef<string | null>(null)
 
     // 视图变换（缩放、平移）
     const {
@@ -68,7 +76,11 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     } = useViewTransform({ wrapperRef, containerRef })
 
     // 边缘选中
-    const { restoreSelection: restoreEdgeSelection, bindEvents: bindEdgeEvents } = useEdgeSelection({
+    const {
+      restoreSelection: restoreEdgeSelection,
+      clearSelection: clearEdgeSelection,
+      bindEvents: bindEdgeEvents,
+    } = useEdgeSelection({
       containerRef,
       enabled: edgeSelectionEnabled,
       onSelect: onEdgeSelect,
@@ -81,6 +93,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
     // 渲染 Mermaid 图表
     useEffect(() => {
+      // 如果当前 source 是样式变更产生的，跳过重渲染并清除标记
+      if (styleOnlySourceRef.current === source) {
+        styleOnlySourceRef.current = null
+        return
+      }
+
       if (!initialized || !containerRef.current) return
 
       if (!source.trim()) {
@@ -201,8 +219,18 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         exportSvg: handleExportSvg,
         resetView,
         restoreEdgeSelection,
+        clearEdgeSelection,
+        applyEdgeStyleDirect: (index: number, style: EdgeStyle) => {
+          const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
+          if (!svg) return false
+          return applyEdgeStyle(svg, index, style)
+        },
+        getSvgElement: () => containerRef.current?.querySelector('svg') as SVGSVGElement | null,
+        markStyleOnlySource: (newSource: string) => {
+          styleOnlySourceRef.current = newSource
+        },
       }),
-      [handleExportPng, handleExportSvg, resetView, restoreEdgeSelection]
+      [handleExportPng, handleExportSvg, resetView, restoreEdgeSelection, clearEdgeSelection]
     )
 
     return (

@@ -19,8 +19,6 @@ interface UseEdgeSelectionOptions {
  * 2. ELK 布局: g.edge-wrapper > path.edge-hitarea + path.flowchart-link
  */
 function findEdgePath(target: Element): { path: SVGPathElement; group: Element; index: number } | null {
-  console.log('[useEdgeSelection] findEdgePath called with target:', target.tagName, target.getAttribute('class'))
-
   // 检查点击的是否是 edge path 或其扩展层
   if (target.tagName === 'path') {
     const classList = target.getAttribute('class') || ''
@@ -33,7 +31,6 @@ function findEdgePath(target: Element): { path: SVGPathElement; group: Element; 
         const realPath = wrapper.querySelector('path.flowchart-link') as SVGPathElement
         if (realPath) {
           const index = parseInt(wrapper.getAttribute('data-edge-index') || '-1', 10)
-          console.log('[useEdgeSelection] Found flowchart-link via hitarea, index:', index)
           return { path: realPath, group: wrapper, index }
         }
       }
@@ -47,14 +44,11 @@ function findEdgePath(target: Element): { path: SVGPathElement; group: Element; 
         if (svg) {
           const allEdgePaths = svg.querySelectorAll('g.edgePath')
           const index = Array.from(allEdgePaths).indexOf(edgePathGroup)
-          console.log('[useEdgeSelection] Found edgePath group, index:', index)
           return { path: target as SVGPathElement, group: edgePathGroup, index }
         }
       }
     }
   }
-
-  console.log('[useEdgeSelection] no edge path found')
   return null
 }
 
@@ -79,14 +73,11 @@ export function useEdgeSelection({
   // 处理 SVG 点击事件
   const handleClick = useCallback(
     (event: MouseEvent) => {
-      console.log('[useEdgeSelection] handleClick called, enabled:', enabled)
       if (!enabled || !containerRef.current) {
-        console.log('[useEdgeSelection] click ignored - enabled:', enabled, 'containerRef:', !!containerRef.current)
         return
       }
 
       const target = event.target as Element
-      console.log('[useEdgeSelection] click target:', target.tagName, target.getAttribute('class'), target)
       const result = findEdgePath(target)
 
       if (result) {
@@ -111,7 +102,6 @@ export function useEdgeSelection({
         setSelectedEdge(edge)
         onSelect?.(edge)
         event.stopPropagation()
-        console.log('[useEdgeSelection] Edge selected, index:', index)
       } else {
         // 点击了空白区域或其他元素，取消选中
         if (selectedEdge) {
@@ -122,7 +112,6 @@ export function useEdgeSelection({
           selectedIndexRef.current = null
           setSelectedEdge(null)
           onSelect?.(null)
-          console.log('[useEdgeSelection] Edge deselected')
         }
       }
     },
@@ -180,8 +169,9 @@ export function useEdgeSelection({
   // 清除选中状态
   const clearSelection = useCallback(() => {
     if (containerRef.current) {
-      const allEdges = containerRef.current.querySelectorAll('g.edgePath')
-      allEdges.forEach((g) => g.classList.remove('edge-selected'))
+      // 清除所有 path 上的选中样式（包括 path.path 和 path.flowchart-link）
+      const selectedPaths = containerRef.current.querySelectorAll('path.edge-selected')
+      selectedPaths.forEach((el) => el.classList.remove('edge-selected'))
     }
     selectedIndexRef.current = null
     setSelectedEdge(null)
@@ -191,15 +181,12 @@ export function useEdgeSelection({
   // 绑定事件监听 - 返回清理函数
   const bindEvents = useCallback(() => {
     const container = containerRef.current
-    console.log('[useEdgeSelection] bindEvents called, container:', container, 'enabled:', enabled)
     if (!container || !enabled) return () => {}
 
-    console.log('[useEdgeSelection] Adding click event listener to container')
     container.addEventListener('click', handleClick)
     document.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      console.log('[useEdgeSelection] Removing click event listener')
       container.removeEventListener('click', handleClick)
       document.removeEventListener('keydown', handleKeyDown)
     }
