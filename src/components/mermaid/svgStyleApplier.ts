@@ -83,20 +83,20 @@ export function applyEdgeStyle(svg: SVGSVGElement, index: number, style: EdgeSty
 export function findNodeElement(
   svg: SVGSVGElement,
   nodeId: string
-): { group: SVGGElement | null; shape: SVGElement | null; text: SVGElement | null } {
+): { group: SVGGElement | null; shape: SVGElement | null; labelSpan: HTMLSpanElement | null } {
   // Mermaid 节点结构: g.node[id="flowchart-{nodeId}-xxx"]
   const nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`)
-  if (!nodeGroup) return { group: null, shape: null, text: null }
+  if (!nodeGroup) return { group: null, shape: null, labelSpan: null }
 
   // 形状元素: rect, polygon, circle, ellipse
   const shape = nodeGroup.querySelector('rect, polygon, circle, ellipse')
-  // 文字元素
-  const text = nodeGroup.querySelector('g.label text, text')
+  // 文字标签元素: span.nodeLabel
+  const labelSpan = nodeGroup.querySelector('span.nodeLabel')
 
   return {
     group: nodeGroup as SVGGElement,
     shape: shape as SVGElement | null,
-    text: text as SVGElement | null,
+    labelSpan: labelSpan as HTMLSpanElement | null,
   }
 }
 
@@ -105,7 +105,7 @@ export function findNodeElement(
  */
 export function applyNodeStyleToElement(
   shape: SVGElement,
-  text: SVGElement | null,
+  labelSpan: HTMLSpanElement | null,
   style: NodeStyle
 ): void {
   // 背景色
@@ -139,12 +139,12 @@ export function applyNodeStyleToElement(
       break
   }
 
-  // 文字颜色
-  if (text) {
+  // 文字颜色 - 应用到 span.nodeLabel 元素
+  if (labelSpan) {
     if (style.color) {
-      text.style.fill = style.color
+      labelSpan.style.setProperty('color', style.color, 'important')
     } else {
-      text.style.removeProperty('fill')
+      labelSpan.style.removeProperty('color')
     }
   }
 
@@ -166,9 +166,9 @@ export function applyNodeStyleToElement(
  * 应用节点样式（主入口）
  */
 export function applyNodeStyle(svg: SVGSVGElement, nodeId: string, style: NodeStyle): boolean {
-  const { shape, text } = findNodeElement(svg, nodeId)
+  const { shape, labelSpan } = findNodeElement(svg, nodeId)
   if (!shape) return false
 
-  applyNodeStyleToElement(shape, text, style)
+  applyNodeStyleToElement(shape, labelSpan, style)
   return true
 }
