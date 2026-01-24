@@ -286,12 +286,18 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
   // 关闭 Edge 样式面板
   const handleEdgePanelClose = useCallback(() => {
-    flushChanges() // 立即同步待处理的变更
-    rendererRef.current?.clearEdgeSelection() // 清除选中样式
+    // 先设置状态触发关闭动画
     setSelectedEdge(null)
     setEdgeStyle({})
-    // 关闭面板时自动保存
-    handleSave(true)
+
+    // 立即执行轻量操作
+    flushChanges()
+    rendererRef.current?.clearEdgeSelection()
+
+    // 延迟执行 handleSave，等待关闭动画完成（约 150ms）
+    setTimeout(() => {
+      handleSave(true)
+    }, 150)
   }, [flushChanges, handleSave])
 
   // Node 选中处理
@@ -375,13 +381,19 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
   // 关闭 Node 样式面板
   const handleNodePanelClose = useCallback(() => {
-    flushChanges() // 立即同步待处理的变更
-    rendererRef.current?.clearNodeSelection() // 清除选中样式
+    // 先设置状态触发关闭动画
     setSelectedNode(null)
     setNodeStyle({})
     setNodeShape(null)
-    // 关闭面板时自动保存
-    handleSave(true)
+
+    // 立即执行轻量操作
+    flushChanges()
+    rendererRef.current?.clearNodeSelection()
+
+    // 延迟执行 handleSave，等待关闭动画完成（约 150ms）
+    setTimeout(() => {
+      handleSave(true)
+    }, 150)
   }, [flushChanges, handleSave])
 
   if (!currentDiagram) {
