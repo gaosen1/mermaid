@@ -76,24 +76,21 @@ function findSubgraphInfo(
   text: SVGElement | null
   bounds: { x: number; y: number; width: number; height: number }
 } | null {
-  // 检查是否点击了 cluster-label 元素
-  const clusterLabel = target.closest('.cluster-label') as SVGGElement | null
-  if (!clusterLabel) return null
-
-  // 获取父级 g.cluster 元素
-  const clusterGroup = clusterLabel.closest('g.cluster') as SVGGElement | null
+  // 检查是否点击了 g.cluster 区域（包括背景 rect 和 cluster-label）
+  const clusterGroup = target.closest('g.cluster') as SVGGElement | null
   if (!clusterGroup) return null
 
-  const subgraphId = getSubgraphIdFromElement(target)
+  const subgraphId = getSubgraphIdFromElement(clusterGroup)
   if (!subgraphId) return null
 
   // 查找形状元素（subgraph 的背景 rect）
-  const shape = clusterGroup.querySelector('rect') as SVGElement | null
+  const shape = clusterGroup.querySelector(':scope > rect') as SVGElement | null
   if (!shape) return null
 
   // 文字元素在 cluster-label 内
-  const text = clusterLabel.querySelector('text') as SVGElement | null
-  const bounds = getNodeBounds(clusterLabel, containerRect)
+  const clusterLabel = clusterGroup.querySelector('.cluster-label')
+  const text = clusterLabel?.querySelector('text') as SVGElement | null
+  const bounds = getNodeBounds(clusterGroup, containerRect)
 
   return {
     id: subgraphId,
@@ -112,15 +109,15 @@ function getClickPosition(event: MouseEvent): { x: number; y: number } {
   return { x: event.clientX, y: event.clientY }
 }
 
-// 双击检测延迟（毫秒）
-const DOUBLE_CLICK_DELAY = 250
+// 双击检测时间窗口（毫秒）
+const DOUBLE_CLICK_WINDOW = 300
 
 /**
  * Node 选中逻辑 Hook
  *
- * 使用延迟机制区分单击和双击：
- * - 单击：延迟后触发 onSelect，显示 NodeStylePanel
- * - 双击：立即触发 onDoubleClick，不触发 onSelect
+ * 单击优先机制：
+ * - 单击：立即触发 onSelect，显示 NodeStylePanel
+ * - 双击：触发 onDoubleClick，关闭面板并进入编辑模式
  *
  * 支持普通节点和 subgraph
  */
@@ -136,8 +133,6 @@ export function useNodeSelection({
   const selectedTypeRef = useRef<NodeType | null>(null)
 
   // 用于双击检测
-  const clickTimerRef = useRef<number | null>(null)
-  const pendingNodeRef = useRef<SelectedNode | null>(null)
   const lastClickTimeRef = useRef<number>(0)
   const lastClickNodeRef = useRef<string | null>(null)
 
@@ -164,17 +159,6 @@ export function useNodeSelection({
     setSelectedNode(node)
     onSelect?.(node)
   }, [onSelect])
-
-  /**
-   * 清除待处理的单击
-   */
-  const clearPendingClick = useCallback(() => {
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current)
-      clickTimerRef.current = null
-    }
-    pendingNodeRef.current = null
-  }, [])
 
   // 处理 SVG 点击事件
   const handleClick = useCallback(
@@ -204,7 +188,7 @@ export function useNodeSelection({
         const now = Date.now()
         const isDoubleClick =
           lastClickNodeRef.current === nodeInfo.id &&
-          now - lastClickTimeRef.current < DOUBLE_CLICK_DELAY
+          now - lastClickTimeRef.current < DOUBLE_CLICK_WINDOW
 
         lastClickTimeRef.current = now
         lastClickNodeRef.current = nodeInfo.id
@@ -220,61 +204,17 @@ export function useNodeSelection({
         }
 
         if (isDoubleClick) {
-          // 双击：取消待处理的单击，直接触发双击
-          clearPendingClick()
+          // 双击：触发双击回调（面板会在 DiagramEditor 中关闭）
           event.stopPropagation()
-
-          // 确保节点已选中（用于双击编辑）
-          if (selectedIdRef.current !== nodeInfo.id) {
-            // 移除之前的选中状态
-            const svg = nodeInfo.element.ownerSVGElement
-            if (svg) {
-              svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
-              svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
-            }
-            if (nodeInfo.type === 'subgraph') {
-              nodeInfo.element.classList.add('subgraph-selected')
-            } else {
-              nodeInfo.element.classList.add('node-selected')
-            }
-            selectedIdRef.current = nodeInfo.id
-            selectedTypeRef.current = nodeInfo.type
-            setSelectedNode(node)
-          }
-
-          // 触发双击回调
           onDoubleClick?.(node)
           return
         }
 
-        // 单击：延迟执行，等待可能的双击
-        // 注意：subgraph 单击不触发 onSelect（不显示样式面板）
-        if (nodeInfo.type === 'subgraph') {
-          // subgraph 单击不做任何事，只等待双击
-          clearPendingClick()
-          pendingNodeRef.current = null
-          lastClickTimeRef.current = now
-          lastClickNodeRef.current = nodeInfo.id
-          event.stopPropagation()
-          return
-        }
-
-        clearPendingClick()
-        pendingNodeRef.current = node
-
-        clickTimerRef.current = window.setTimeout(() => {
-          if (pendingNodeRef.current) {
-            executeSelect(pendingNodeRef.current)
-            pendingNodeRef.current = null
-          }
-          clickTimerRef.current = null
-        }, DOUBLE_CLICK_DELAY)
-
+        // 单击：立即选中节点并显示面板
+        executeSelect(node)
         event.stopPropagation()
       } else {
         // 点击了空白区域，取消选中
-        clearPendingClick()
-
         if (selectedNode) {
           const svg = containerRef.current?.querySelector('svg')
           if (svg) {
@@ -288,7 +228,7 @@ export function useNodeSelection({
         }
       }
     },
-    [containerRef, wrapperRef, enabled, onSelect, onDoubleClick, selectedNode, executeSelect, clearPendingClick]
+    [containerRef, wrapperRef, enabled, onSelect, onDoubleClick, selectedNode, executeSelect]
   )
 
   // 处理 Esc 键关闭
@@ -370,8 +310,6 @@ export function useNodeSelection({
 
   // 清除选中状态
   const clearSelection = useCallback(() => {
-    clearPendingClick()
-
     if (containerRef.current) {
       const svg = containerRef.current.querySelector('svg')
       if (svg) {
@@ -383,7 +321,7 @@ export function useNodeSelection({
     selectedTypeRef.current = null
     setSelectedNode(null)
     onSelect?.(null)
-  }, [containerRef, onSelect, clearPendingClick])
+  }, [containerRef, onSelect])
 
   // 绑定事件监听
   const bindEvents = useCallback(() => {
@@ -403,15 +341,6 @@ export function useNodeSelection({
   useEffect(() => {
     return bindEvents()
   }, [bindEvents])
-
-  // 清理定时器
-  useEffect(() => {
-    return () => {
-      if (clickTimerRef.current) {
-        clearTimeout(clickTimerRef.current)
-      }
-    }
-  }, [])
 
   return {
     selectedNode,

@@ -147,12 +147,13 @@ export function setupSvgSubgraphInteraction(svg: SVGSVGElement): void {
   // 为所有 g.cluster 设置交互样式
   const clusters = svg.querySelectorAll('g.cluster')
   clusters.forEach((cluster) => {
-    // 只为 cluster-label 设置点击样式，避免整个 subgraph 区域都可点击
-    const label = cluster.querySelector('.cluster-label')
-    if (label) {
-      const labelEl = label as SVGGElement
-      labelEl.style.cursor = 'pointer'
-      labelEl.style.pointerEvents = 'auto'
+    const clusterEl = cluster as SVGGElement
+    // 让整个 subgraph 区域可点击
+    clusterEl.style.cursor = 'pointer'
+    // 为背景 rect 设置 pointer-events，使整个区域可点击
+    const rect = clusterEl.querySelector(':scope > rect') as SVGRectElement | null
+    if (rect) {
+      rect.style.pointerEvents = 'auto'
     }
   })
 }

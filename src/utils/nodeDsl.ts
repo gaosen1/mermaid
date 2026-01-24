@@ -515,3 +515,163 @@ export function updateSourceWithSubgraphTitle(
 
   return lines.join('\n')
 }
+
+// ============ Subgraph 样式相关函数 ============
+
+/**
+ * Subgraph 样式接口（与 NodeStyle 类似，但不包含形状相关属性）
+ */
+export interface SubgraphStyle {
+  fill?: string // 背景色
+  stroke?: string // 边框颜色
+  strokeType?: 'normal' | 'dotted' | 'thick' // 边框样式
+  color?: string // 文字颜色
+}
+
+/**
+ * 将 SubgraphStyle 转换为 CSS 样式字符串
+ */
+export function subgraphStyleToCss(style: SubgraphStyle): string {
+  const parts: string[] = []
+
+  // 背景色
+  if (style.fill) {
+    parts.push(`fill:${style.fill}`)
+  }
+
+  // 边框颜色
+  if (style.stroke) {
+    parts.push(`stroke:${style.stroke}`)
+  }
+
+  // 边框样式
+  switch (style.strokeType) {
+    case 'normal':
+      parts.push('stroke-width:1px')
+      break
+    case 'dotted':
+      parts.push('stroke-dasharray:5 5', 'stroke-width:1px')
+      break
+    case 'thick':
+      parts.push('stroke-width:3px')
+      break
+  }
+
+  // 文字颜色
+  if (style.color) {
+    parts.push(`color:${style.color}`)
+  }
+
+  return parts.join(',')
+}
+
+/**
+ * 从 CSS 样式字符串解析 SubgraphStyle
+ */
+export function cssToSubgraphStyle(cssString: string): SubgraphStyle {
+  const style: SubgraphStyle = {}
+
+  // 解析 fill（背景色）
+  const fillMatch = cssString.match(/fill\s*:\s*([^,;]+)/)
+  if (fillMatch) {
+    style.fill = fillMatch[1].trim()
+  }
+
+  // 解析 stroke（边框颜色）- 排除 stroke-width 和 stroke-dasharray
+  const strokeMatch = cssString.match(/(?<![a-z-])stroke\s*:\s*([^,;]+)/i)
+  if (strokeMatch) {
+    const value = strokeMatch[1].trim()
+    if (!value.includes('px') && !value.includes('dasharray')) {
+      style.stroke = value
+    }
+  }
+
+  // 解析 stroke-width
+  const strokeWidthMatch = cssString.match(/stroke-width\s*:\s*(\d+)px/)
+  if (strokeWidthMatch) {
+    const width = parseInt(strokeWidthMatch[1], 10)
+    if (width >= 3) {
+      style.strokeType = 'thick'
+    } else {
+      style.strokeType = 'normal'
+    }
+  }
+
+  // 解析 stroke-dasharray（虚线会覆盖 strokeType）
+  const dasharrayMatch = cssString.match(/stroke-dasharray\s*:\s*[\d\s]+/)
+  if (dasharrayMatch) {
+    style.strokeType = 'dotted'
+  }
+
+  // 解析 color（文字颜色）
+  const colorMatch = cssString.match(/(?<![a-z-])color\s*:\s*([^,;]+)/i)
+  if (colorMatch) {
+    style.color = colorMatch[1].trim()
+  }
+
+  return style
+}
+
+/**
+ * 从 source 解析指定 subgraph 的样式
+ * Mermaid 使用 style 指令为 subgraph 设置样式，格式与节点相同
+ */
+export function parseSubgraphStyleFromSource(source: string, subgraphId: string): SubgraphStyle {
+  const lines = source.split('\n')
+  const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegex(subgraphId)}\\s+(.+)$`)
+
+  for (const line of lines) {
+    const match = line.match(styleRegex)
+    if (match) {
+      return cssToSubgraphStyle(match[1])
+    }
+  }
+
+  return {}
+}
+
+/**
+ * 更新 source 中 subgraph 的样式
+ */
+export function updateSourceWithSubgraphStyle(
+  source: string,
+  subgraphId: string,
+  style: SubgraphStyle
+): string {
+  const cssString = subgraphStyleToCss(style)
+
+  // 如果样式为空，移除 style 行
+  if (!cssString) {
+    return removeSubgraphStyle(source, subgraphId)
+  }
+
+  const lines = source.split('\n')
+  const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegex(subgraphId)}\\s+`)
+
+  let replaced = false
+  const newLines = lines.map((line) => {
+    if (styleRegex.test(line)) {
+      replaced = true
+      return `style ${subgraphId} ${cssString}`
+    }
+    return line
+  })
+
+  if (!replaced) {
+    // 在末尾添加新行
+    const trimmedSource = source.trimEnd()
+    return `${trimmedSource}\nstyle ${subgraphId} ${cssString}`
+  }
+
+  return newLines.join('\n')
+}
+
+/**
+ * 移除指定 subgraph 的 style 行
+ */
+function removeSubgraphStyle(source: string, subgraphId: string): string {
+  const lines = source.split('\n')
+  const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegex(subgraphId)}\\s+`)
+  const newLines = lines.filter((line) => !styleRegex.test(line))
+  return newLines.join('\n')
+}

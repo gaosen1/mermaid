@@ -26,8 +26,10 @@ import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import {
   parseNodeStyleFromSource,
   parseNodeShapeFromSource,
+  parseSubgraphStyleFromSource,
   type NodeStyle,
   type NodeShape,
+  type SubgraphStyle,
 } from '@/utils/nodeDsl'
 import type { SelectedEdge } from './useEdgeSelection'
 import type { SelectedNode } from './useNodeSelection'
@@ -304,11 +306,19 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
       if (node) {
         // 保存位置，供关闭时使用
         setLastNodePosition(node.position)
-        // 解析当前 node 的样式和形状
-        const currentStyle = parseNodeStyleFromSource(source, node.id)
-        const currentShape = parseNodeShapeFromSource(source, node.id)
-        setNodeStyle(currentStyle)
-        setNodeShape(currentShape)
+        // 根据类型解析样式
+        if (node.type === 'subgraph') {
+          // subgraph 样式解析
+          const currentStyle = parseSubgraphStyleFromSource(source, node.id)
+          setNodeStyle(currentStyle)
+          setNodeShape(null) // subgraph 没有形状选项
+        } else {
+          // 普通节点样式和形状解析
+          const currentStyle = parseNodeStyleFromSource(source, node.id)
+          const currentShape = parseNodeShapeFromSource(source, node.id)
+          setNodeStyle(currentStyle)
+          setNodeShape(currentShape)
+        }
       } else {
         setNodeStyle({})
         setNodeShape(null)
@@ -319,16 +329,24 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
   // Node 样式变化处理
   const handleNodeStyleChange = useCallback(
-    (newStyle: NodeStyle) => {
+    (newStyle: NodeStyle | SubgraphStyle) => {
       if (!selectedNode) return
 
-      setNodeStyle(newStyle)
+      setNodeStyle(newStyle as NodeStyle)
 
-      // 1. 直接应用到 SVG（即时预览，无重渲染）
-      rendererRef.current?.applyNodeStyleDirect(selectedNode.id, newStyle)
+      if (selectedNode.type === 'subgraph') {
+        // 1. 直接应用到 SVG（即时预览，无重渲染）
+        rendererRef.current?.applySubgraphStyleDirect(selectedNode.id, newStyle as SubgraphStyle)
 
-      // 2. 延迟同步到 source（防抖 500ms）
-      recordStyleChange('node', selectedNode.id, newStyle)
+        // 2. 延迟同步到 source（防抖 500ms）
+        recordStyleChange('subgraph', selectedNode.id, newStyle as SubgraphStyle)
+      } else {
+        // 1. 直接应用到 SVG（即时预览，无重渲染）
+        rendererRef.current?.applyNodeStyleDirect(selectedNode.id, newStyle as NodeStyle)
+
+        // 2. 延迟同步到 source（防抖 500ms）
+        recordStyleChange('node', selectedNode.id, newStyle as NodeStyle)
+      }
     },
     [selectedNode, recordStyleChange]
   )

@@ -11,15 +11,17 @@ import {
   updateSourceWithNodeShape,
   updateSourceWithNodeText,
   updateSourceWithSubgraphTitle,
+  updateSourceWithSubgraphStyle,
   type NodeStyle,
   type NodeShape,
+  type SubgraphStyle,
 } from '@/utils/nodeDsl'
 import type { NodeType } from './svgUtils'
 
 interface PendingStyleChange {
-  type: 'edge' | 'node'
+  type: 'edge' | 'node' | 'subgraph'
   id: number | string
-  style: EdgeStyle | NodeStyle
+  style: EdgeStyle | NodeStyle | SubgraphStyle
 }
 
 interface PendingShapeChange {
@@ -79,6 +81,12 @@ export function useSourceSync({
           change.id as string,
           change.style as NodeStyle
         )
+      } else if (change.type === 'subgraph') {
+        newSource = updateSourceWithSubgraphStyle(
+          newSource,
+          change.id as string,
+          change.style as SubgraphStyle
+        )
       } else if (change.type === 'nodeShape') {
         newSource = updateSourceWithNodeShape(newSource, change.id, change.shape)
         hasStructuralChange = true
@@ -98,7 +106,7 @@ export function useSourceSync({
 
   /** 记录样式变更（防抖同步） */
   const recordStyleChange = useCallback(
-    (type: 'edge' | 'node', id: number | string, style: EdgeStyle | NodeStyle) => {
+    (type: 'edge' | 'node' | 'subgraph', id: number | string, style: EdgeStyle | NodeStyle | SubgraphStyle) => {
       const key = `${type}-${id}`
       pendingChangesRef.current.set(key, { type, id, style })
 

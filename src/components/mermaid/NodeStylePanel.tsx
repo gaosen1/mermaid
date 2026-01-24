@@ -316,7 +316,8 @@ export function NodeStylePanel({
             </div>
           </div>
 
-          {/* 动画 */}
+          {/* 动画 - 仅普通节点显示 */}
+          {currentShape !== null && (
           <div>
             <span className="text-xs font-medium text-muted-foreground mb-2 block">动画</span>
             <div className="flex gap-2">
@@ -337,8 +338,10 @@ export function NodeStylePanel({
               ))}
             </div>
           </div>
+          )}
 
-          {/* 形状 */}
+          {/* 形状 - 仅普通节点显示 */}
+          {currentShape !== null && (
           <div>
             <span className="text-xs font-medium text-muted-foreground mb-2 block">形状</span>
             <div className="grid grid-cols-4 gap-1.5">
@@ -362,6 +365,7 @@ export function NodeStylePanel({
               ))}
             </div>
           </div>
+          )}
         </div>
       </PopoverContent>
     </Popover>

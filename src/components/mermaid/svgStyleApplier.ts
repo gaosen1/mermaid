@@ -5,9 +5,9 @@
  */
 
 import type { EdgeStyle } from '@/utils/edgeDsl'
-import type { NodeStyle } from '@/utils/nodeDsl'
+import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 
-export type { NodeStyle }
+export type { NodeStyle, SubgraphStyle }
 
 /**
  * 查找指定索引的边缘元素
@@ -170,5 +170,91 @@ export function applyNodeStyle(svg: SVGSVGElement, nodeId: string, style: NodeSt
   if (!shape) return false
 
   applyNodeStyleToElement(shape, labelSpan, style)
+  return true
+}
+
+// ============ Subgraph 样式应用 ============
+
+/**
+ * 查找指定 ID 的 subgraph 元素
+ * Mermaid 生成的 subgraph 结构: g.cluster[id="{subgraphId}"]
+ */
+export function findSubgraphElement(
+  svg: SVGSVGElement,
+  subgraphId: string
+): { group: SVGGElement | null; shape: SVGElement | null; labelSpan: HTMLSpanElement | null } {
+  // Mermaid subgraph 结构: g.cluster[id="{subgraphId}"]
+  const clusterGroup = svg.querySelector(`g.cluster[id="${subgraphId}"]`)
+  if (!clusterGroup) return { group: null, shape: null, labelSpan: null }
+
+  // 形状元素: rect (subgraph 背景)
+  const shape = clusterGroup.querySelector('rect')
+  // 文字标签元素: .cluster-label span
+  const labelSpan = clusterGroup.querySelector('.cluster-label span')
+
+  return {
+    group: clusterGroup as SVGGElement,
+    shape: shape as SVGElement | null,
+    labelSpan: labelSpan as HTMLSpanElement | null,
+  }
+}
+
+/**
+ * 将 SubgraphStyle 应用到 SVG subgraph 元素
+ */
+export function applySubgraphStyleToElement(
+  shape: SVGElement,
+  labelSpan: HTMLSpanElement | null,
+  style: SubgraphStyle
+): void {
+  // 背景色
+  if (style.fill) {
+    shape.style.fill = style.fill
+  } else {
+    shape.style.removeProperty('fill')
+  }
+
+  // 边框颜色
+  if (style.stroke) {
+    shape.style.stroke = style.stroke
+  } else {
+    shape.style.removeProperty('stroke')
+  }
+
+  // 边框样式
+  switch (style.strokeType) {
+    case 'dotted':
+      shape.style.strokeDasharray = '5 5'
+      shape.style.strokeWidth = '1px'
+      break
+    case 'thick':
+      shape.style.strokeDasharray = ''
+      shape.style.strokeWidth = '3px'
+      break
+    case 'normal':
+    default:
+      shape.style.strokeDasharray = ''
+      shape.style.strokeWidth = '1px'
+      break
+  }
+
+  // 文字颜色 - 应用到 span 元素
+  if (labelSpan) {
+    if (style.color) {
+      labelSpan.style.setProperty('color', style.color, 'important')
+    } else {
+      labelSpan.style.removeProperty('color')
+    }
+  }
+}
+
+/**
+ * 应用 subgraph 样式（主入口）
+ */
+export function applySubgraphStyle(svg: SVGSVGElement, subgraphId: string, style: SubgraphStyle): boolean {
+  const { shape, labelSpan } = findSubgraphElement(svg, subgraphId)
+  if (!shape) return false
+
+  applySubgraphStyleToElement(shape, labelSpan, style)
   return true
 }

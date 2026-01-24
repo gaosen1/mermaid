@@ -9,11 +9,11 @@ import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useNodeSelection, type SelectedNode } from './useNodeSelection'
 import { useViewTransform } from './useViewTransform'
 import { cleanupMermaidErrors, setupSvgEdgeInteraction, setupSvgNodeInteraction, setupSvgSubgraphInteraction } from './svgUtils'
-import { applyEdgeStyle, applyNodeStyle } from './svgStyleApplier'
+import { applyEdgeStyle, applyNodeStyle, applySubgraphStyle } from './svgStyleApplier'
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
 import type { EdgeStyle } from '@/utils/edgeDsl'
-import type { NodeStyle } from '@/utils/nodeDsl'
+import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 
 export interface MermaidRendererRef {
   exportPng: () => Promise<void>
@@ -25,6 +25,7 @@ export interface MermaidRendererRef {
   restoreNodeSelection: () => void
   clearNodeSelection: () => void
   applyNodeStyleDirect: (nodeId: string, style: NodeStyle) => boolean
+  applySubgraphStyleDirect: (subgraphId: string, style: SubgraphStyle) => boolean
   getSvgElement: () => SVGSVGElement | null
   markStyleOnlySource: (source: string) => void
   getScale: () => number
@@ -299,6 +300,11 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
           if (!svg) return false
           return applyNodeStyle(svg, nodeId, style)
+        },
+        applySubgraphStyleDirect: (subgraphId: string, style: SubgraphStyle) => {
+          const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
+          if (!svg) return false
+          return applySubgraphStyle(svg, subgraphId, style)
         },
         getSvgElement: () => containerRef.current?.querySelector('svg') as SVGSVGElement | null,
         markStyleOnlySource: (newSource: string) => {
