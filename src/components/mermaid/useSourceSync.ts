@@ -36,7 +36,7 @@ type PendingChange = PendingStyleChange | PendingShapeChange | PendingTextChange
 
 interface UseSourceSyncOptions {
   source: string
-  onSourceChange: (newSource: string, isStyleOnly: boolean) => void
+  onSourceChange: (newSource: string, isStyleOnly: boolean, shouldSave?: boolean) => void
   debounceMs?: number
 }
 
@@ -57,7 +57,7 @@ export function useSourceSync({
   }, [source])
 
   /** 执行同步 */
-  const doSync = useCallback(() => {
+  const doSync = useCallback((shouldSave: boolean = false) => {
     const changes = pendingChangesRef.current
     if (changes.size === 0) return
 
@@ -87,7 +87,7 @@ export function useSourceSync({
 
     pendingChangesRef.current.clear()
     // isStyleOnly = 没有结构变更
-    onSourceChange(newSource, !hasStructuralChange)
+    onSourceChange(newSource, !hasStructuralChange, shouldSave)
   }, [onSourceChange])
 
   /** 记录样式变更（防抖同步） */
@@ -133,12 +133,12 @@ export function useSourceSync({
   )
 
   /** 立即同步所有待处理变更 */
-  const flushChanges = useCallback(() => {
+  const flushChanges = useCallback((shouldSave: boolean = false) => {
     if (timerRef.current) {
       clearTimeout(timerRef.current)
       timerRef.current = null
     }
-    doSync()
+    doSync(shouldSave)
   }, [doSync])
 
   /** 取消待处理变更 */

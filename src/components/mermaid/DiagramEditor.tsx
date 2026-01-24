@@ -3,8 +3,8 @@ import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { CodeEditor } from './CodeEditor'
 import { EdgeStylePanel } from './EdgeStylePanel'
 import { NodeStylePanel } from './NodeStylePanel'
-import { NodeTextEditor } from './NodeTextEditor'
 import { useSourceSync } from './useSourceSync'
+import { useInlineTextEdit } from './useInlineTextEdit'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -26,7 +26,6 @@ import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import {
   parseNodeStyleFromSource,
   parseNodeShapeFromSource,
-  parseNodeTextFromSource,
   type NodeStyle,
   type NodeShape,
 } from '@/utils/nodeDsl'
@@ -94,22 +93,44 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [nodeShape, setNodeShape] = useState<NodeShape | null>(null)
   const [lastNodePosition, setLastNodePosition] = useState({ x: 0, y: 0 })
   const [isEditingNodeText, setIsEditingNodeText] = useState(false)
-  const [editingNodeText, setEditingNodeText] = useState('')
-  const [editingNodeBounds, setEditingNodeBounds] = useState({ x: 0, y: 0, width: 0, height: 0 })
-  const [currentScale, setCurrentScale] = useState(1)
 
   // 提前解构 source，供 useSourceSync 使用
   const { source, layout, theme, hasChanges } = editorState
 
+  // 用于在 onSourceChange 中调用 handleSave
+  const handleSaveRef = useRef<((isAuto: boolean) => Promise<void>) | undefined>(undefined)
+
   // 源码同步（防抖）
   const { recordStyleChange, recordShapeChange, recordTextChange, flushChanges } = useSourceSync({
     source,
-    onSourceChange: (newSource, isStyleOnly) => {
+    onSourceChange: (newSource, isStyleOnly, shouldSave) => {
       // 只有纯样式变更才标记跳过重渲染，形状和文字变更需要重新渲染
       if (isStyleOnly) {
         rendererRef.current?.markStyleOnlySource(newSource)
       }
       setEditorState((prev) => ({ ...prev, source: newSource, hasChanges: true }))
+      // 如果需要保存，在 state 更新后执行
+      if (shouldSave) {
+        // 使用 setTimeout 确保在 state 更新后执行保存
+        setTimeout(() => {
+          handleSaveRef.current?.(true)
+        }, 0)
+      }
+    },
+  })
+
+  // 原地编辑节点文字
+  const { startEdit: startInlineEdit, hasJustEnded: hasJustEndedEdit } = useInlineTextEdit({
+    onTextChange: (nodeId, newText) => {
+      recordTextChange(nodeId, newText)
+      // 文字变更后立即同步并保存
+      flushChanges(true)
+    },
+    onEditStart: () => {
+      setIsEditingNodeText(true)
+    },
+    onEditEnd: () => {
+      setIsEditingNodeText(false)
     },
   })
 
@@ -178,6 +199,11 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
     setEditorState(prev => ({ ...prev, hasChanges: false }))
   }, [currentDiagram, diagramId, source, layout, theme, updateDiagram, createSnapshot])
+
+  // 更新 handleSaveRef
+  useEffect(() => {
+    handleSaveRef.current = handleSave
+  }, [handleSave])
 
   useEffect(() => {
     if (autoSaveTimerRef.current) {
@@ -269,11 +295,15 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   // Node 选中处理
   const handleNodeSelect = useCallback(
     (node: SelectedNode | null) => {
+      // 如果刚刚结束编辑，忽略这次选中（避免 Enter 退出编辑后触发 NodeStylePanel）
+      if (node && hasJustEndedEdit()) {
+        return
+      }
+
       setSelectedNode(node)
       if (node) {
         // 保存位置，供关闭时使用
         setLastNodePosition(node.position)
-        setEditingNodeBounds(node.bounds)
         // 解析当前 node 的样式和形状
         const currentStyle = parseNodeStyleFromSource(source, node.id)
         const currentShape = parseNodeShapeFromSource(source, node.id)
@@ -284,7 +314,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         setNodeShape(null)
       }
     },
-    [source]
+    [source, hasJustEndedEdit]
   )
 
   // Node 样式变化处理
@@ -317,37 +347,13 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     [selectedNode, recordShapeChange]
   )
 
-  // Node 双击编辑文字
+  // Node 双击编辑文字（原地编辑）
   const handleNodeDoubleClick = useCallback(
     (node: SelectedNode) => {
-      const text = parseNodeTextFromSource(source, node.id)
-      setEditingNodeText(text)
-      setEditingNodeBounds(node.bounds)
-      // 在事件处理中获取 scale
-      const scale = rendererRef.current?.getScale() || 1
-      setCurrentScale(scale)
-      setIsEditingNodeText(true)
+      startInlineEdit(node)
     },
-    [source]
+    [startInlineEdit]
   )
-
-  // Node 文字保存
-  const handleNodeTextSave = useCallback(
-    (text: string) => {
-      if (!selectedNode) return
-
-      setIsEditingNodeText(false)
-
-      // 文字变更需要重渲染
-      recordTextChange(selectedNode.id, text)
-    },
-    [selectedNode, recordTextChange]
-  )
-
-  // Node 文字取消
-  const handleNodeTextCancel = useCallback(() => {
-    setIsEditingNodeText(false)
-  }, [])
 
   // 关闭 Node 样式面板
   const handleNodePanelClose = useCallback(() => {
@@ -602,16 +608,6 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         onStyleChange={handleNodeStyleChange}
         onShapeChange={handleNodeShapeChange}
         onClose={handleNodePanelClose}
-      />
-
-      {/* Node 文字编辑器 */}
-      <NodeTextEditor
-        open={isEditingNodeText}
-        bounds={editingNodeBounds}
-        initialText={editingNodeText}
-        scale={currentScale}
-        onSave={handleNodeTextSave}
-        onCancel={handleNodeTextCancel}
       />
     </div>
   )

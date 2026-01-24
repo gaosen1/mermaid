@@ -254,8 +254,19 @@ export function updateSourceWithNodeShape(
 export function parseNodeTextFromSource(source: string, nodeId: string): string {
   const nodeInfo = findNodeDefinition(source, nodeId)
   if (!nodeInfo) return ''
+
+  let text = nodeInfo.text
+
+  // 移除双引号包裹（如果有）
+  if (text.startsWith('"') && text.endsWith('"')) {
+    text = text.slice(1, -1)
+  }
+
+  // 将 #quot; 转换回双引号
+  text = text.replace(/#quot;/g, '"')
+
   // 将 <br> 和 <br/> 转换为换行符显示
-  return nodeInfo.text.replace(/<br\s*\/?>/gi, '\n')
+  return text.replace(/<br\s*\/?>/gi, '\n')
 }
 
 /**
@@ -265,9 +276,15 @@ export function updateSourceWithNodeText(source: string, nodeId: string, text: s
   const nodeInfo = findNodeDefinition(source, nodeId)
   if (!nodeInfo) return source
 
+  // 移除零宽空格（编辑时用于光标定位）
+  const cleanedText = text.replace(/\u200B/g, '')
   // 将换行符转换为 <br>
-  const escapedText = text.replace(/\n/g, '<br>')
-  const newNodeDef = `${nodeId}${nodeInfo.open}${escapedText}${nodeInfo.close}`
+  const escapedText = cleanedText.replace(/\n/g, '<br>')
+
+  // 使用双引号包裹文字，避免特殊字符导致语法错误
+  // 同时需要转义文字中的双引号
+  const quotedText = `"${escapedText.replace(/"/g, '#quot;')}"`
+  const newNodeDef = `${nodeId}${nodeInfo.open}${quotedText}${nodeInfo.close}`
 
   const lines = source.split('\n')
   lines[nodeInfo.lineIndex] = lines[nodeInfo.lineIndex].replace(nodeInfo.fullMatch, newNodeDef)

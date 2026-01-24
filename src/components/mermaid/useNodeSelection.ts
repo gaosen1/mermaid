@@ -61,8 +61,15 @@ function getClickPosition(event: MouseEvent): { x: number; y: number } {
   return { x: event.clientX, y: event.clientY }
 }
 
+// 双击检测延迟（毫秒）
+const DOUBLE_CLICK_DELAY = 250
+
 /**
  * Node 选中逻辑 Hook
+ *
+ * 使用延迟机制区分单击和双击：
+ * - 单击：延迟后触发 onSelect，显示 NodeStylePanel
+ * - 双击：立即触发 onDoubleClick，不触发 onSelect
  */
 export function useNodeSelection({
   containerRef,
@@ -73,8 +80,41 @@ export function useNodeSelection({
 }: UseNodeSelectionOptions) {
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
   const selectedIdRef = useRef<string | null>(null)
+
+  // 用于双击检测
+  const clickTimerRef = useRef<number | null>(null)
+  const pendingNodeRef = useRef<SelectedNode | null>(null)
   const lastClickTimeRef = useRef<number>(0)
   const lastClickNodeRef = useRef<string | null>(null)
+
+  /**
+   * 执行单击选中
+   */
+  const executeSelect = useCallback((node: SelectedNode) => {
+    // 移除之前的选中状态
+    const svg = node.element.ownerSVGElement
+    if (svg) {
+      svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+    }
+
+    // 添加新的选中状态
+    node.element.classList.add('node-selected')
+
+    selectedIdRef.current = node.id
+    setSelectedNode(node)
+    onSelect?.(node)
+  }, [onSelect])
+
+  /**
+   * 清除待处理的单击
+   */
+  const clearPendingClick = useCallback(() => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+    }
+    pendingNodeRef.current = null
+  }, [])
 
   // 处理 SVG 点击事件
   const handleClick = useCallback(
@@ -96,19 +136,12 @@ export function useNodeSelection({
       if (nodeInfo) {
         const now = Date.now()
         const isDoubleClick =
-          lastClickNodeRef.current === nodeInfo.id && now - lastClickTimeRef.current < 300
+          lastClickNodeRef.current === nodeInfo.id &&
+          now - lastClickTimeRef.current < DOUBLE_CLICK_DELAY
 
         lastClickTimeRef.current = now
         lastClickNodeRef.current = nodeInfo.id
 
-        if (isDoubleClick && onDoubleClick && selectedNode) {
-          // 双击：触发文字编辑
-          onDoubleClick(selectedNode)
-          event.stopPropagation()
-          return
-        }
-
-        // 单击：选中节点
         const node: SelectedNode = {
           id: nodeInfo.id,
           element: nodeInfo.element,
@@ -118,21 +151,45 @@ export function useNodeSelection({
           bounds: nodeInfo.bounds,
         }
 
-        // 移除之前的选中状态
-        const svg = nodeInfo.element.ownerSVGElement
-        if (svg) {
-          svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+        if (isDoubleClick) {
+          // 双击：取消待处理的单击，直接触发双击
+          clearPendingClick()
+          event.stopPropagation()
+
+          // 确保节点已选中（用于双击编辑）
+          if (selectedIdRef.current !== nodeInfo.id) {
+            // 移除之前的选中状态
+            const svg = nodeInfo.element.ownerSVGElement
+            if (svg) {
+              svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+            }
+            nodeInfo.element.classList.add('node-selected')
+            selectedIdRef.current = nodeInfo.id
+            setSelectedNode(node)
+          }
+
+          // 触发双击回调
+          onDoubleClick?.(node)
+          return
         }
 
-        // 添加新的选中状态
-        nodeInfo.element.classList.add('node-selected')
+        // 单击：延迟执行，等待可能的双击
+        clearPendingClick()
+        pendingNodeRef.current = node
 
-        selectedIdRef.current = nodeInfo.id
-        setSelectedNode(node)
-        onSelect?.(node)
+        clickTimerRef.current = window.setTimeout(() => {
+          if (pendingNodeRef.current) {
+            executeSelect(pendingNodeRef.current)
+            pendingNodeRef.current = null
+          }
+          clickTimerRef.current = null
+        }, DOUBLE_CLICK_DELAY)
+
         event.stopPropagation()
       } else {
         // 点击了空白区域，取消选中
+        clearPendingClick()
+
         if (selectedNode) {
           const svg = containerRef.current?.querySelector('svg')
           if (svg) {
@@ -144,7 +201,7 @@ export function useNodeSelection({
         }
       }
     },
-    [containerRef, wrapperRef, enabled, onSelect, onDoubleClick, selectedNode]
+    [containerRef, wrapperRef, enabled, onSelect, onDoubleClick, selectedNode, executeSelect, clearPendingClick]
   )
 
   // 处理 Esc 键关闭
@@ -206,6 +263,8 @@ export function useNodeSelection({
 
   // 清除选中状态
   const clearSelection = useCallback(() => {
+    clearPendingClick()
+
     if (containerRef.current) {
       const svg = containerRef.current.querySelector('svg')
       if (svg) {
@@ -215,7 +274,7 @@ export function useNodeSelection({
     selectedIdRef.current = null
     setSelectedNode(null)
     onSelect?.(null)
-  }, [containerRef, onSelect])
+  }, [containerRef, onSelect, clearPendingClick])
 
   // 绑定事件监听
   const bindEvents = useCallback(() => {
@@ -235,6 +294,15 @@ export function useNodeSelection({
   useEffect(() => {
     return bindEvents()
   }, [bindEvents])
+
+  // 清理定时器
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current)
+      }
+    }
+  }, [])
 
   return {
     selectedNode,
