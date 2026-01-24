@@ -4,6 +4,9 @@
 
 import { EDGE_CONFIG } from './constants'
 
+// 节点类型
+export type NodeType = 'node' | 'subgraph'
+
 /**
  * 清理 Mermaid 渲染产生的错误 DOM 元素
  */
@@ -120,6 +123,38 @@ export function getNodeIdFromElement(element: Element): string | null {
   // 匹配 flowchart-{nodeId}-{index} 格式
   const match = id.match(/^flowchart-(.+?)-\d+$/)
   return match ? match[1] : null
+}
+
+/**
+ * 从 SVG 元素提取 subgraph ID
+ * Mermaid 生成的 subgraph ID 格式: subGraph{index} 或直接使用 subgraph 名称
+ */
+export function getSubgraphIdFromElement(element: Element): string | null {
+  // 向上查找 g.cluster 元素
+  const clusterGroup = element.closest('g.cluster')
+  if (!clusterGroup) return null
+
+  const id = clusterGroup.getAttribute('id')
+  if (!id) return null
+
+  return id
+}
+
+/**
+ * 设置 SVG 元素的 subgraph 点击支持
+ */
+export function setupSvgSubgraphInteraction(svg: SVGSVGElement): void {
+  // 为所有 g.cluster 设置交互样式
+  const clusters = svg.querySelectorAll('g.cluster')
+  clusters.forEach((cluster) => {
+    // 只为 cluster-label 设置点击样式，避免整个 subgraph 区域都可点击
+    const label = cluster.querySelector('.cluster-label')
+    if (label) {
+      const labelEl = label as SVGGElement
+      labelEl.style.cursor = 'pointer'
+      labelEl.style.pointerEvents = 'auto'
+    }
+  })
 }
 
 /**

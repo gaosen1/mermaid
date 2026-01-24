@@ -376,3 +376,142 @@ function findNodeDefinition(source: string, nodeId: string): NodeDefinition | nu
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
+
+// ============ Subgraph 相关函数 ============
+
+interface SubgraphDefinition {
+  subgraphId: string
+  title: string
+  fullMatch: string
+  lineIndex: number
+}
+
+/**
+ * 查找 subgraph 定义
+ * Mermaid subgraph 语法: subgraph id [title]
+ *
+ * 注意：subgraphId 可能是：
+ * 1. 源码中定义的 ID（如 sg1）
+ * 2. Mermaid 生成的内部 ID（如 subGraph0）
+ *
+ * 如果是内部 ID，需要通过标题文字来匹配
+ */
+function findSubgraphDefinition(source: string, subgraphId: string, titleHint?: string): SubgraphDefinition | null {
+  const lines = source.split('\n')
+
+  // 匹配 subgraph 语法
+  // 格式: subgraph id [title] 或 subgraph id["title"] 或 subgraph id
+  const subgraphRegex = /^\s*subgraph\s+(\S+)(?:\s*\[([^\]]*)\])?/
+
+  // 首先尝试通过 ID 精确匹配
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex]
+    const match = line.match(subgraphRegex)
+
+    if (match && match[1] === subgraphId) {
+      const title = match[2] || subgraphId
+      const fullMatch = match[0]
+
+      return {
+        subgraphId: match[1],
+        title,
+        fullMatch,
+        lineIndex,
+      }
+    }
+  }
+
+  // 如果 ID 匹配失败且提供了标题提示，尝试通过标题匹配
+  if (titleHint) {
+    // 清理标题提示（移除可能的 HTML 标签和特殊字符）
+    const cleanTitleHint = titleHint
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/\u200B/g, '')
+      .trim()
+
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const line = lines[lineIndex]
+      const match = line.match(subgraphRegex)
+
+      if (match) {
+        let title = match[2] || match[1]
+
+        // 移除双引号包裹
+        if (title.startsWith('"') && title.endsWith('"')) {
+          title = title.slice(1, -1)
+        }
+
+        // 将 #quot; 转换回双引号
+        title = title.replace(/#quot;/g, '"')
+
+        // 将 <br> 转换为换行符
+        title = title.replace(/<br\s*\/?>/gi, '\n')
+
+        if (title === cleanTitleHint) {
+          return {
+            subgraphId: match[1],
+            title: match[2] || match[1],
+            fullMatch: match[0],
+            lineIndex,
+          }
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * 从 source 解析指定 subgraph 的标题
+ */
+export function parseSubgraphTitleFromSource(source: string, subgraphId: string): string {
+  const subgraphInfo = findSubgraphDefinition(source, subgraphId)
+  if (!subgraphInfo) return ''
+
+  let title = subgraphInfo.title
+
+  // 移除双引号包裹（如果有）
+  if (title.startsWith('"') && title.endsWith('"')) {
+    title = title.slice(1, -1)
+  }
+
+  // 将 #quot; 转换回双引号
+  title = title.replace(/#quot;/g, '"')
+
+  // 将 <br> 和 <br/> 转换为换行符显示
+  return title.replace(/<br\s*\/?>/gi, '\n')
+}
+
+/**
+ * 更新 source 中 subgraph 的标题
+ * @param source 源码
+ * @param subgraphId Mermaid 生成的 subgraph ID（可能是内部 ID 如 subGraph0）
+ * @param newTitle 新标题
+ * @param originalTitle 原始标题（用于在 ID 匹配失败时通过标题匹配）
+ */
+export function updateSourceWithSubgraphTitle(
+  source: string,
+  subgraphId: string,
+  newTitle: string,
+  originalTitle?: string
+): string {
+  const subgraphInfo = findSubgraphDefinition(source, subgraphId, originalTitle)
+  if (!subgraphInfo) return source
+
+  // 移除零宽空格（编辑时用于光标定位）
+  const cleanedTitle = newTitle.replace(/\u200B/g, '')
+  // 将换行符转换为 <br>
+  const escapedTitle = cleanedTitle.replace(/\n/g, '<br>')
+
+  // 使用双引号包裹标题，避免特殊字符导致语法错误
+  // 同时需要转义标题中的双引号
+  const quotedTitle = `"${escapedTitle.replace(/"/g, '#quot;')}"`
+  // 使用源码中的真实 subgraphId，而不是 Mermaid 生成的内部 ID
+  const newSubgraphDef = `subgraph ${subgraphInfo.subgraphId} [${quotedTitle}]`
+
+  const lines = source.split('\n')
+  lines[subgraphInfo.lineIndex] = lines[subgraphInfo.lineIndex].replace(subgraphInfo.fullMatch, newSubgraphDef)
+
+  return lines.join('\n')
+}

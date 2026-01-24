@@ -121,8 +121,8 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
   // 原地编辑节点文字
   const { startEdit: startInlineEdit, hasJustEnded: hasJustEndedEdit } = useInlineTextEdit({
-    onTextChange: (nodeId, newText) => {
-      recordTextChange(nodeId, newText)
+    onTextChange: (nodeId, newText, nodeType, originalText) => {
+      recordTextChange(nodeId, newText, nodeType, originalText)
       // 文字变更后立即同步并保存
       flushChanges(true)
     },

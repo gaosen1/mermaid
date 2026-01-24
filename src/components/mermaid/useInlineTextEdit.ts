@@ -1,8 +1,9 @@
 import { useCallback, useRef, useEffect } from 'react'
 import type { SelectedNode } from './useNodeSelection'
+import type { NodeType } from './svgUtils'
 
 interface UseInlineTextEditOptions {
-  onTextChange?: (nodeId: string, newText: string) => void
+  onTextChange?: (nodeId: string, newText: string, nodeType: NodeType, originalText: string) => void
   onEditStart?: () => void
   onEditEnd?: () => void
 }
@@ -48,6 +49,7 @@ export function useInlineTextEdit({
   onEditEnd,
 }: UseInlineTextEditOptions) {
   const editingNodeIdRef = useRef<string | null>(null)
+  const editingNodeTypeRef = useRef<NodeType | null>(null)
   const originalTextRef = useRef<string>('')
   const currentSpanRef = useRef<HTMLSpanElement | null>(null)
   const foreignObjectRef = useRef<SVGForeignObjectElement | null>(null)
@@ -74,23 +76,42 @@ export function useInlineTextEdit({
 
   /**
    * 查找节点的文字 span 元素
+   * 支持普通节点和 subgraph
    */
-  const findLabelSpan = useCallback((nodeElement: SVGGElement): HTMLSpanElement | null => {
-    // Mermaid 渲染的文字在 foreignObject > div > span.nodeLabel
-    return nodeElement.querySelector('span.nodeLabel') as HTMLSpanElement | null
+  const findLabelSpan = useCallback((node: SelectedNode): HTMLSpanElement | null => {
+    if (node.type === 'subgraph') {
+      // subgraph 的文字在 g.cluster-label > foreignObject > div > span
+      const clusterLabel = node.element.querySelector('.cluster-label')
+      if (!clusterLabel) return null
+      return clusterLabel.querySelector('span') as HTMLSpanElement | null
+    }
+    // 普通节点的文字在 foreignObject > div > span.nodeLabel
+    return node.element.querySelector('span.nodeLabel') as HTMLSpanElement | null
   }, [])
 
   /**
    * 查找 foreignObject 元素
+   * 支持普通节点和 subgraph
    */
-  const findForeignObject = useCallback((nodeElement: SVGGElement): SVGForeignObjectElement | null => {
-    return nodeElement.querySelector('foreignObject') as SVGForeignObjectElement | null
+  const findForeignObject = useCallback((node: SelectedNode): SVGForeignObjectElement | null => {
+    if (node.type === 'subgraph') {
+      // subgraph 的 foreignObject 在 g.cluster-label 内
+      const clusterLabel = node.element.querySelector('.cluster-label')
+      if (!clusterLabel) return null
+      return clusterLabel.querySelector('foreignObject') as SVGForeignObjectElement | null
+    }
+    return node.element.querySelector('foreignObject') as SVGForeignObjectElement | null
   }, [])
 
   /**
    * 清理编辑状态和样式
+   * @param restoreForeignObject 是否恢复 foreignObject 的原始尺寸（取消编辑时需要恢复，保存时不需要因为会重新渲染）
    */
-  const cleanup = useCallback((span: HTMLSpanElement | null, foreignObject: SVGForeignObjectElement | null) => {
+  const cleanup = useCallback((
+    span: HTMLSpanElement | null,
+    foreignObject: SVGForeignObjectElement | null,
+    restoreForeignObject: boolean = true
+  ) => {
     if (span) {
       // 移除 contenteditable
       span.contentEditable = 'false'
@@ -105,8 +126,8 @@ export function useInlineTextEdit({
       span.style.display = ''
     }
 
-    // 恢复 foreignObject 的原始样式
-    if (foreignObject && originalForeignObjectStyleRef.current) {
+    // 恢复 foreignObject 的原始样式（仅在取消编辑时）
+    if (restoreForeignObject && foreignObject && originalForeignObjectStyleRef.current) {
       foreignObject.style.width = originalForeignObjectStyleRef.current.width
       foreignObject.style.height = originalForeignObjectStyleRef.current.height
       foreignObject.style.overflow = originalForeignObjectStyleRef.current.overflow
@@ -126,8 +147,9 @@ export function useInlineTextEdit({
     const span = currentSpanRef.current
     const foreignObject = foreignObjectRef.current
     const nodeId = editingNodeIdRef.current
+    const nodeType = editingNodeTypeRef.current
 
-    if (!span || !nodeId) {
+    if (!span || !nodeId || !nodeType) {
       isEndingRef.current = false
       return
     }
@@ -136,13 +158,19 @@ export function useInlineTextEdit({
     const newText = htmlToText(span.innerHTML)
     const originalText = originalTextRef.current
 
+    // 判断是否有变更
+    const hasChanges = newText !== originalText
+
     // 清理样式
-    cleanup(span, foreignObject)
+    // 如果保存且有变更，不恢复 foreignObject 尺寸（因为会重新渲染）
+    // 如果取消或没有变更，恢复 foreignObject 尺寸
+    cleanup(span, foreignObject, !save || !hasChanges)
 
     // 清理 refs
     currentSpanRef.current = null
     foreignObjectRef.current = null
     editingNodeIdRef.current = null
+    editingNodeTypeRef.current = null
     originalTextRef.current = ''
 
     // 设置标记，阻止后续点击事件触发 NodeStylePanel
@@ -151,9 +179,9 @@ export function useInlineTextEdit({
       justEndedRef.current = false
     }, 300)
 
-    if (save && newText !== originalText) {
-      // 通知文字变更
-      onTextChangeRef.current?.(nodeId, newText)
+    if (save && hasChanges) {
+      // 通知文字变更，传递原始文字用于 subgraph 标题匹配
+      onTextChangeRef.current?.(nodeId, newText, nodeType, originalText)
     } else if (!save && span) {
       // 恢复原始文字（需要将换行符转回 <br>）
       span.innerHTML = originalText.replace(/\n/g, '<br>')
@@ -174,14 +202,15 @@ export function useInlineTextEdit({
       endEdit(true)
     }
 
-    const span = findLabelSpan(node.element)
+    const span = findLabelSpan(node)
     if (!span) return false
 
-    const foreignObject = findForeignObject(node.element)
+    const foreignObject = findForeignObject(node)
 
     // 保存原始文字（将 <br> 转换为换行符以便比较）
     originalTextRef.current = htmlToText(span.innerHTML)
     editingNodeIdRef.current = node.id
+    editingNodeTypeRef.current = node.type
     currentSpanRef.current = span
     foreignObjectRef.current = foreignObject
 

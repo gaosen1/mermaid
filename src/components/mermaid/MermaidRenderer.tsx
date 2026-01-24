@@ -8,7 +8,7 @@ import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
 import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useNodeSelection, type SelectedNode } from './useNodeSelection'
 import { useViewTransform } from './useViewTransform'
-import { cleanupMermaidErrors, setupSvgEdgeInteraction, setupSvgNodeInteraction } from './svgUtils'
+import { cleanupMermaidErrors, setupSvgEdgeInteraction, setupSvgNodeInteraction, setupSvgSubgraphInteraction } from './svgUtils'
 import { applyEdgeStyle, applyNodeStyle } from './svgStyleApplier'
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
@@ -187,6 +187,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
             if (svgEl) {
               setupSvgEdgeInteraction(svgEl)
               setupSvgNodeInteraction(svgEl)
+              setupSvgSubgraphInteraction(svgEl)
             }
 
             if (animationCSS) {

@@ -10,9 +10,11 @@ import {
   updateSourceWithNodeStyle,
   updateSourceWithNodeShape,
   updateSourceWithNodeText,
+  updateSourceWithSubgraphTitle,
   type NodeStyle,
   type NodeShape,
 } from '@/utils/nodeDsl'
+import type { NodeType } from './svgUtils'
 
 interface PendingStyleChange {
   type: 'edge' | 'node'
@@ -27,9 +29,10 @@ interface PendingShapeChange {
 }
 
 interface PendingTextChange {
-  type: 'nodeText'
+  type: 'nodeText' | 'subgraphText'
   id: string
   text: string
+  originalText?: string // 原始文字，用于 subgraph 标题匹配
 }
 
 type PendingChange = PendingStyleChange | PendingShapeChange | PendingTextChange
@@ -82,6 +85,9 @@ export function useSourceSync({
       } else if (change.type === 'nodeText') {
         newSource = updateSourceWithNodeText(newSource, change.id, change.text)
         hasStructuralChange = true
+      } else if (change.type === 'subgraphText') {
+        newSource = updateSourceWithSubgraphTitle(newSource, change.id, change.text, change.originalText)
+        hasStructuralChange = true
       }
     })
 
@@ -120,9 +126,10 @@ export function useSourceSync({
 
   /** 记录文字变更（防抖同步） */
   const recordTextChange = useCallback(
-    (nodeId: string, text: string) => {
-      const key = `nodeText-${nodeId}`
-      pendingChangesRef.current.set(key, { type: 'nodeText', id: nodeId, text })
+    (nodeId: string, text: string, nodeType: NodeType = 'node', originalText?: string) => {
+      const changeType = nodeType === 'subgraph' ? 'subgraphText' : 'nodeText'
+      const key = `${changeType}-${nodeId}`
+      pendingChangesRef.current.set(key, { type: changeType, id: nodeId, text, originalText })
 
       if (timerRef.current) {
         clearTimeout(timerRef.current)

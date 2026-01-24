@@ -1,9 +1,15 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
-import { getNodeIdFromElement, getNodeBounds } from './svgUtils'
+import {
+  getNodeIdFromElement,
+  getSubgraphIdFromElement,
+  getNodeBounds,
+  type NodeType,
+} from './svgUtils'
 
 export interface SelectedNode {
   id: string // 节点 ID
-  element: SVGGElement // g.node 元素
+  type: NodeType // 节点类型：'node' | 'subgraph'
+  element: SVGGElement // g.node 或 g.cluster 元素
   shape: SVGElement // 形状元素 (rect/polygon/circle)
   text: SVGElement | null // 文字元素
   position: { x: number; y: number } // 点击位置（用于面板定位）
@@ -19,13 +25,14 @@ interface UseNodeSelectionOptions {
 }
 
 /**
- * 从元素查找节点信息
+ * 从元素查找普通节点信息
  */
 function findNodeInfo(
   target: Element,
   containerRect: DOMRect
 ): {
   id: string
+  type: NodeType
   element: SVGGElement
   shape: SVGElement
   text: SVGElement | null
@@ -47,7 +54,51 @@ function findNodeInfo(
 
   return {
     id: nodeId,
+    type: 'node',
     element: nodeGroup,
+    shape,
+    text,
+    bounds,
+  }
+}
+
+/**
+ * 从元素查找 subgraph 信息
+ */
+function findSubgraphInfo(
+  target: Element,
+  containerRect: DOMRect
+): {
+  id: string
+  type: NodeType
+  element: SVGGElement
+  shape: SVGElement
+  text: SVGElement | null
+  bounds: { x: number; y: number; width: number; height: number }
+} | null {
+  // 检查是否点击了 cluster-label 元素
+  const clusterLabel = target.closest('.cluster-label') as SVGGElement | null
+  if (!clusterLabel) return null
+
+  // 获取父级 g.cluster 元素
+  const clusterGroup = clusterLabel.closest('g.cluster') as SVGGElement | null
+  if (!clusterGroup) return null
+
+  const subgraphId = getSubgraphIdFromElement(target)
+  if (!subgraphId) return null
+
+  // 查找形状元素（subgraph 的背景 rect）
+  const shape = clusterGroup.querySelector('rect') as SVGElement | null
+  if (!shape) return null
+
+  // 文字元素在 cluster-label 内
+  const text = clusterLabel.querySelector('text') as SVGElement | null
+  const bounds = getNodeBounds(clusterLabel, containerRect)
+
+  return {
+    id: subgraphId,
+    type: 'subgraph',
+    element: clusterGroup,
     shape,
     text,
     bounds,
@@ -70,6 +121,8 @@ const DOUBLE_CLICK_DELAY = 250
  * 使用延迟机制区分单击和双击：
  * - 单击：延迟后触发 onSelect，显示 NodeStylePanel
  * - 双击：立即触发 onDoubleClick，不触发 onSelect
+ *
+ * 支持普通节点和 subgraph
  */
 export function useNodeSelection({
   containerRef,
@@ -80,6 +133,7 @@ export function useNodeSelection({
 }: UseNodeSelectionOptions) {
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null)
   const selectedIdRef = useRef<string | null>(null)
+  const selectedTypeRef = useRef<NodeType | null>(null)
 
   // 用于双击检测
   const clickTimerRef = useRef<number | null>(null)
@@ -95,12 +149,18 @@ export function useNodeSelection({
     const svg = node.element.ownerSVGElement
     if (svg) {
       svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+      svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
     }
 
     // 添加新的选中状态
-    node.element.classList.add('node-selected')
+    if (node.type === 'subgraph') {
+      node.element.classList.add('subgraph-selected')
+    } else {
+      node.element.classList.add('node-selected')
+    }
 
     selectedIdRef.current = node.id
+    selectedTypeRef.current = node.type
     setSelectedNode(node)
     onSelect?.(node)
   }, [onSelect])
@@ -131,7 +191,14 @@ export function useNodeSelection({
       }
 
       const containerRect = wrapperRef.current.getBoundingClientRect()
-      const nodeInfo = findNodeInfo(target, containerRect)
+
+      // 优先检查 subgraph（因为 subgraph 可能包含普通节点）
+      let nodeInfo = findSubgraphInfo(target, containerRect)
+
+      // 如果不是 subgraph，检查普通节点
+      if (!nodeInfo) {
+        nodeInfo = findNodeInfo(target, containerRect)
+      }
 
       if (nodeInfo) {
         const now = Date.now()
@@ -144,6 +211,7 @@ export function useNodeSelection({
 
         const node: SelectedNode = {
           id: nodeInfo.id,
+          type: nodeInfo.type,
           element: nodeInfo.element,
           shape: nodeInfo.shape,
           text: nodeInfo.text,
@@ -162,9 +230,15 @@ export function useNodeSelection({
             const svg = nodeInfo.element.ownerSVGElement
             if (svg) {
               svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+              svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
             }
-            nodeInfo.element.classList.add('node-selected')
+            if (nodeInfo.type === 'subgraph') {
+              nodeInfo.element.classList.add('subgraph-selected')
+            } else {
+              nodeInfo.element.classList.add('node-selected')
+            }
             selectedIdRef.current = nodeInfo.id
+            selectedTypeRef.current = nodeInfo.type
             setSelectedNode(node)
           }
 
@@ -174,6 +248,17 @@ export function useNodeSelection({
         }
 
         // 单击：延迟执行，等待可能的双击
+        // 注意：subgraph 单击不触发 onSelect（不显示样式面板）
+        if (nodeInfo.type === 'subgraph') {
+          // subgraph 单击不做任何事，只等待双击
+          clearPendingClick()
+          pendingNodeRef.current = null
+          lastClickTimeRef.current = now
+          lastClickNodeRef.current = nodeInfo.id
+          event.stopPropagation()
+          return
+        }
+
         clearPendingClick()
         pendingNodeRef.current = node
 
@@ -194,8 +279,10 @@ export function useNodeSelection({
           const svg = containerRef.current?.querySelector('svg')
           if (svg) {
             svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+            svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
           }
           selectedIdRef.current = null
+          selectedTypeRef.current = null
           setSelectedNode(null)
           onSelect?.(null)
         }
@@ -212,9 +299,11 @@ export function useNodeSelection({
           const svg = containerRef.current.querySelector('svg')
           if (svg) {
             svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+            svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
           }
         }
         selectedIdRef.current = null
+        selectedTypeRef.current = null
         setSelectedNode(null)
         onSelect?.(null)
       }
@@ -230,23 +319,40 @@ export function useNodeSelection({
     if (!svg) return
 
     const nodeId = selectedIdRef.current
-    const nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`) as SVGGElement | null
+    const nodeType = selectedTypeRef.current
+
+    let nodeGroup: SVGGElement | null = null
+
+    if (nodeType === 'subgraph') {
+      nodeGroup = svg.querySelector(`g.cluster[id="${nodeId}"]`) as SVGGElement | null
+    } else {
+      nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`) as SVGGElement | null
+    }
 
     if (nodeGroup) {
       // 清除所有选中状态
       svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+      svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
+
       // 恢复选中状态
-      nodeGroup.classList.add('node-selected')
+      if (nodeType === 'subgraph') {
+        nodeGroup.classList.add('subgraph-selected')
+      } else {
+        nodeGroup.classList.add('node-selected')
+      }
 
       const shape = nodeGroup.querySelector('rect, polygon, circle, ellipse') as SVGElement | null
-      const text = nodeGroup.querySelector('g.label text, text') as SVGElement | null
+      const text = nodeType === 'subgraph'
+        ? nodeGroup.querySelector('.cluster-label text') as SVGElement | null
+        : nodeGroup.querySelector('g.label text, text') as SVGElement | null
       const containerRect = wrapperRef.current.getBoundingClientRect()
       const bounds = getNodeBounds(nodeGroup, containerRect)
 
       if (shape) {
         setSelectedNode((prev) => ({
           id: nodeId,
-          element: nodeGroup,
+          type: nodeType || 'node',
+          element: nodeGroup!,
           shape,
           text,
           position: prev?.position || { x: 0, y: 0 },
@@ -256,6 +362,7 @@ export function useNodeSelection({
     } else {
       // 节点不存在，清除选中
       selectedIdRef.current = null
+      selectedTypeRef.current = null
       setSelectedNode(null)
       onSelect?.(null)
     }
@@ -269,9 +376,11 @@ export function useNodeSelection({
       const svg = containerRef.current.querySelector('svg')
       if (svg) {
         svg.querySelectorAll('.node-selected').forEach((el) => el.classList.remove('node-selected'))
+        svg.querySelectorAll('.subgraph-selected').forEach((el) => el.classList.remove('subgraph-selected'))
       }
     }
     selectedIdRef.current = null
+    selectedTypeRef.current = null
     setSelectedNode(null)
     onSelect?.(null)
   }, [containerRef, onSelect, clearPendingClick])
