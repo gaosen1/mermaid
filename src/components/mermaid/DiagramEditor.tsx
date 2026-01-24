@@ -262,7 +262,9 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     rendererRef.current?.clearEdgeSelection() // 清除选中样式
     setSelectedEdge(null)
     setEdgeStyle({})
-  }, [flushChanges])
+    // 关闭面板时自动保存
+    handleSave(true)
+  }, [flushChanges, handleSave])
 
   // Node 选中处理
   const handleNodeSelect = useCallback(
@@ -354,7 +356,9 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     setSelectedNode(null)
     setNodeStyle({})
     setNodeShape(null)
-  }, [flushChanges])
+    // 关闭面板时自动保存
+    handleSave(true)
+  }, [flushChanges, handleSave])
 
   if (!currentDiagram) {
     return (
