@@ -52,6 +52,17 @@ function wrapFlowchartLink(path: Element, index: number): void {
   // 原线条禁用点击
   ;(path as SVGPathElement).style.pointerEvents = 'none'
 
+  // 添加悬浮事件
+  const realPath = path as SVGPathElement
+  hitArea.addEventListener('mouseenter', () => {
+    if (!realPath.classList.contains('edge-selected')) {
+      realPath.classList.add('edge-hover')
+    }
+  })
+  hitArea.addEventListener('mouseleave', () => {
+    realPath.classList.remove('edge-hover')
+  })
+
   // 替换结构
   const parent = path.parentElement
   if (parent) {
@@ -65,10 +76,20 @@ function wrapFlowchartLink(path: Element, index: number): void {
  * 处理 edgePath 元素的点击事件
  */
 function setupEdgePath(edgePath: Element): void {
-  const path = edgePath.querySelector('path')
+  const path = edgePath.querySelector('path') as SVGPathElement | null
   if (path) {
     path.style.pointerEvents = 'stroke'
     path.style.cursor = 'pointer'
+
+    // 添加悬浮事件
+    path.addEventListener('mouseenter', () => {
+      if (!path.classList.contains('edge-selected')) {
+        path.classList.add('edge-hover')
+      }
+    })
+    path.addEventListener('mouseleave', () => {
+      path.classList.remove('edge-hover')
+    })
   }
   ;(edgePath as SVGGElement).style.pointerEvents = 'auto'
   ;(edgePath as SVGGElement).style.cursor = 'pointer'
@@ -104,6 +125,16 @@ export function setupSvgNodeInteraction(svg: SVGSVGElement): void {
     const shapes = node.querySelectorAll('rect, polygon, circle, ellipse, path')
     shapes.forEach((shape) => {
       ;(shape as SVGElement).style.pointerEvents = 'auto'
+    })
+
+    // 添加悬浮事件
+    nodeEl.addEventListener('mouseenter', () => {
+      if (!nodeEl.classList.contains('node-selected')) {
+        nodeEl.classList.add('node-hover')
+      }
+    })
+    nodeEl.addEventListener('mouseleave', () => {
+      nodeEl.classList.remove('node-hover')
     })
   })
 }
@@ -155,6 +186,24 @@ export function setupSvgSubgraphInteraction(svg: SVGSVGElement): void {
     if (rect) {
       rect.style.pointerEvents = 'auto'
     }
+
+    // 添加悬浮事件
+    clusterEl.addEventListener('mouseenter', (e) => {
+      // 避免子元素触发父元素的悬浮（只在直接进入时触发）
+      const relatedTarget = e.relatedTarget as Element | null
+      if (relatedTarget && clusterEl.contains(relatedTarget)) return
+
+      if (!clusterEl.classList.contains('subgraph-selected')) {
+        clusterEl.classList.add('subgraph-hover')
+      }
+    })
+    clusterEl.addEventListener('mouseleave', (e) => {
+      // 避免进入子元素时移除悬浮（只在真正离开时移除）
+      const relatedTarget = e.relatedTarget as Element | null
+      if (relatedTarget && clusterEl.contains(relatedTarget)) return
+
+      clusterEl.classList.remove('subgraph-hover')
+    })
   })
 }
 

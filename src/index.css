@@ -151,15 +151,12 @@ path.flowchart-link.edge-selected {
   filter: drop-shadow(0 0 8px #3b82f6) !important;
 }
 
-/* 暗色主题下只修改连接线的颜色 - 精确选择器 */
-/* .dark path.flowchart-link {
-  stroke: #a1a1aa !important;
-} */
-
-/* 暗色主题下修复箭头颜色 - 只针对 marker 内的 path */
-/* .dark svg defs marker path {
-  fill: #a1a1aa !important;
-} */
+/* Edge 悬浮高亮样式 */
+path.edge-hover,
+path.flowchart-link.edge-hover {
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 6px #3b82f6) !important;
+}
 
 /* Edge 点击区域 - 透明扩展层 */
 path.edge-hitarea {
@@ -186,6 +183,35 @@ g.node.node-selected > circle,
 g.node.node-selected > ellipse,
 g.node.node-selected > path {
   filter: drop-shadow(0 0 8px #3b82f6) !important;
+  stroke-width: 2px !important;
+}
+
+/* Node 悬浮高亮样式 */
+g.node.node-hover > rect,
+g.node.node-hover > polygon,
+g.node.node-hover > circle,
+g.node.node-hover > ellipse,
+g.node.node-hover > path {
+  filter: drop-shadow(0 0 6px #3b82f6) !important;
+  stroke-width: 2px !important;
+}
+
+/* ========== Subgraph 样式 ========== */
+
+/* Subgraph 可点击提示 */
+g.cluster {
+  cursor: pointer;
+}
+
+/* Subgraph 选中高亮样式 */
+g.cluster.subgraph-selected > rect {
+  filter: drop-shadow(0 0 8px #3b82f6) !important;
+  stroke-width: 2px !important;
+}
+
+/* Subgraph 悬浮高亮样式 */
+g.cluster.subgraph-hover > rect {
+  filter: drop-shadow(0 0 6px #3b82f6) !important;
   stroke-width: 2px !important;
 }
 
