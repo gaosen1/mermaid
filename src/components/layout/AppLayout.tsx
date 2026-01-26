@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useSyncStore } from '@/stores/syncStore'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Toaster } from '@/components/ui/sonner'
+import { SyncStatusIndicator } from '@/components/sync'
 import { HomePage } from '@/pages/HomePage'
 import { ProjectPage } from '@/pages/ProjectPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -14,12 +16,14 @@ type View = 'home' | 'project' | 'settings' | 'theme-test'
 
 export function AppLayout() {
   const { settings, loadSettings, updateSettings } = useSettingsStore()
+  const { initialize: initSync } = useSyncStore()
   const [view, setView] = useState<View>('home')
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
 
   useEffect(() => {
     loadSettings()
-  }, [loadSettings])
+    initSync()
+  }, [loadSettings, initSync])
 
   useEffect(() => {
     const root = window.document.documentElement
@@ -92,6 +96,7 @@ export function AppLayout() {
         </Button>
         <div className="flex-1" />
         <Separator className="w-8" />
+        <SyncStatusIndicator />
         <Button variant="ghost" size="icon" onClick={cycleTheme} title="切换主题">
           {getThemeIcon()}
         </Button>

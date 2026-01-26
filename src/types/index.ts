@@ -1,3 +1,5 @@
+import type { SyncStatus } from './sync'
+
 export interface Project {
   id: string
   name: string
@@ -5,6 +7,12 @@ export interface Project {
   tags: string[]
   createdAt: number
   updatedAt: number
+  // 同步相关字段
+  syncStatus?: SyncStatus
+  lastSyncTime?: number
+  remoteChecksum?: string
+  localChecksum?: string
+  syncError?: string
 }
 
 export interface Diagram {
@@ -15,6 +23,12 @@ export interface Diagram {
   config?: DiagramConfig
   createdAt: number
   updatedAt: number
+  // 同步相关字段
+  syncStatus?: SyncStatus
+  lastSyncTime?: number
+  remoteChecksum?: string
+  localChecksum?: string
+  syncError?: string
 }
 
 export type LayoutType = 'elk' | 'dagre' | 'hierarchical'
@@ -32,6 +46,10 @@ export interface Snapshot {
   description?: string
   createdAt: number
   isAuto: boolean
+  // 同步相关字段
+  syncStatus?: SyncStatus
+  lastSyncTime?: number
+  syncError?: string
 }
 
 export interface UserSettings {

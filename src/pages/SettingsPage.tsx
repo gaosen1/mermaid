@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useSyncStore } from '@/stores/syncStore'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -10,11 +12,23 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { RotateCcw } from 'lucide-react'
+import { GitHubLoginDialog } from '@/components/sync'
+import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle } from 'lucide-react'
 import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
   const { settings, updateSettings, resetSettings } = useSettingsStore()
+  const {
+    isAuthenticated,
+    userName,
+    userLogin,
+    syncError,
+    stats,
+    settings: syncSettings,
+    disconnect,
+    updateSettings: updateSyncSettings,
+  } = useSyncStore()
+  const [loginOpen, setLoginOpen] = useState(false)
 
   const handleReset = () => {
     if (confirm('确定要重置所有设置为默认值吗？')) {
@@ -37,6 +51,110 @@ export function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Github className="h-5 w-5" />
+              GitHub 同步
+            </CardTitle>
+            <CardDescription>将图表数据同步到 GitHub 仓库</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isAuthenticated ? (
+              <>
+                <div className="flex items-center justify-between p-3 bg-green-500/10 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">{userName || userLogin}</p>
+                      <p className="text-sm text-muted-foreground">@{userLogin}</p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={disconnect}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    断开连接
+                  </Button>
+                </div>
+
+                {syncError && (
+                  <div className="flex items-start gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{syncError}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-muted-foreground">已同步项目</p>
+                    <p className="text-lg font-semibold">
+                      {stats.syncedProjects}/{stats.totalProjects}
+                    </p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <p className="text-muted-foreground">已同步图表</p>
+                    <p className="text-lg font-semibold">
+                      {stats.syncedDiagrams}/{stats.totalDiagrams}
+                    </p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>自动同步</Label>
+                    <p className="text-sm text-muted-foreground">自动将更改同步到云端</p>
+                  </div>
+                  <Select
+                    value={syncSettings.autoSync ? 'on' : 'off'}
+                    onValueChange={(v) => updateSyncSettings({ autoSync: v === 'on' })}
+                  >
+                    <SelectTrigger className="w-[100px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="on">开启</SelectItem>
+                      <SelectItem value="off">关闭</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label>冲突策略</Label>
+                    <p className="text-sm text-muted-foreground">当本地和云端数据冲突时</p>
+                  </div>
+                  <Select
+                    value={syncSettings.conflictStrategy}
+                    onValueChange={(v) =>
+                      updateSyncSettings({ conflictStrategy: v as 'local' | 'remote' | 'ask' })
+                    }
+                  >
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ask">询问</SelectItem>
+                      <SelectItem value="local">保留本地</SelectItem>
+                      <SelectItem value="remote">使用云端</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-muted-foreground mb-4">
+                  连接 GitHub 后，您的图表数据将自动备份到云端
+                </p>
+                <Button onClick={() => setLoginOpen(true)}>
+                  <Github className="h-4 w-4 mr-2" />
+                  连接 GitHub
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardTitle>外观</CardTitle>
@@ -211,6 +329,8 @@ export function SettingsPage() {
         </Card>
       </div>
       </div>
+
+      <GitHubLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
     </div>
   )
 }
