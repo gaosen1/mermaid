@@ -13,6 +13,7 @@ import { applyEdgeStyle, applyNodeStyle, applySubgraphStyle } from './svgStyleAp
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
 import type { EdgeStyle } from '@/utils/edgeDsl'
+import { parseAllEdgeStylesFromSource } from '@/utils/edgeDsl'
 import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 
 export interface MermaidRendererRef {
@@ -189,6 +190,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
               setupSvgEdgeInteraction(svgEl)
               setupSvgNodeInteraction(svgEl)
               setupSvgSubgraphInteraction(svgEl)
+
+              // 重新应用 leader 动画样式（需要创建第二层路径，linkStyle CSS 无法实现）
+              const leaderStyles = parseAllEdgeStylesFromSource(source)
+              for (const { index, style } of leaderStyles) {
+                applyEdgeStyle(svgEl, index, style)
+              }
             }
 
             if (animationCSS) {

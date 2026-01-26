@@ -9,6 +9,9 @@ import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 
 export type { NodeStyle, SubgraphStyle }
 
+// Leader 路径的 data 属性标识
+const LEADER_PATH_ATTR = 'data-leader-path'
+
 /**
  * 查找指定索引的边缘元素
  */
@@ -22,6 +25,42 @@ export function findEdgeElement(svg: SVGSVGElement, index: number): SVGPathEleme
   // 旧版结构: g.edgePath (按顺序索引)
   const edgePaths = svg.querySelectorAll('g.edgePath path.path')
   return (edgePaths[index] as SVGPathElement) || null
+}
+
+/**
+ * 查找或创建 leader 路径
+ */
+function findOrCreateLeaderPath(basePath: SVGPathElement): SVGPathElement | null {
+  const parent = basePath.parentElement
+  if (!parent) return null
+
+  // 查找已存在的 leader 路径
+  let leaderPath = parent.querySelector(`path[${LEADER_PATH_ATTR}]`) as SVGPathElement | null
+
+  if (!leaderPath) {
+    // 克隆基础路径创建 leader 层
+    leaderPath = basePath.cloneNode(true) as SVGPathElement
+    leaderPath.setAttribute(LEADER_PATH_ATTR, 'true')
+    leaderPath.classList.remove('flowchart-link', 'path')
+    leaderPath.classList.add('leader-path')
+    // 插入到基础路径之后（在上层显示）
+    basePath.after(leaderPath)
+  }
+
+  return leaderPath
+}
+
+/**
+ * 移除 leader 路径
+ */
+function removeLeaderPath(basePath: SVGPathElement): void {
+  const parent = basePath.parentElement
+  if (!parent) return
+
+  const leaderPath = parent.querySelector(`path[${LEADER_PATH_ATTR}]`)
+  if (leaderPath) {
+    leaderPath.remove()
+  }
 }
 
 /**
@@ -53,16 +92,46 @@ export function applyEdgeStyleToElement(path: SVGPathElement, style: EdgeStyle):
   }
 
   // 动画
-  switch (style.animation) {
-    case 'slow':
-      path.style.animation = 'mermaid-edge-dash 1.5s linear infinite'
-      break
-    case 'fast':
-      path.style.animation = 'mermaid-edge-dash 0.6s linear infinite'
-      break
-    case 'none':
-    default:
-      path.style.removeProperty('animation')
+  const isLeaderAnimation = style.animation === 'slow-leader' || style.animation === 'fast-leader'
+
+  if (isLeaderAnimation) {
+    // Leader 动画：需要两层路径
+    // 基础层使用较慢的速度，leader 层使用更快的速度形成"追赶"效果
+    const baseDuration = style.animation === 'fast-leader' ? '2s' : '5s'
+    const leaderDuration = style.animation === 'fast-leader' ? '0.8s' : '2s'
+
+    // 基础层：普通虚线行军蚁
+    path.style.strokeDasharray = '5 5'
+    path.style.strokeWidth = '1px'
+    path.style.animation = `mermaid-edge-dash-leader-base ${baseDuration} linear infinite`
+
+    // 创建或更新 leader 层
+    const leaderPath = findOrCreateLeaderPath(path)
+    if (leaderPath) {
+      // Leader 层样式：更长更粗的单个 dash，移动速度更快
+      leaderPath.style.stroke = style.color || 'currentColor'
+      leaderPath.style.strokeDasharray = '12 48' // 12px dash, 48px gap = 60px 周期
+      leaderPath.style.strokeWidth = '3px'
+      leaderPath.style.strokeLinecap = 'round'
+      leaderPath.style.fill = 'none'
+      leaderPath.style.animation = `mermaid-edge-dash-leader-dot ${leaderDuration} linear infinite`
+      leaderPath.style.pointerEvents = 'none'
+    }
+  } else {
+    // 非 leader 动画：移除 leader 层
+    removeLeaderPath(path)
+
+    switch (style.animation) {
+      case 'slow':
+        path.style.animation = 'mermaid-edge-dash 1.5s linear infinite'
+        break
+      case 'fast':
+        path.style.animation = 'mermaid-edge-dash 0.6s linear infinite'
+        break
+      case 'none':
+      default:
+        path.style.removeProperty('animation')
+    }
   }
 }
 

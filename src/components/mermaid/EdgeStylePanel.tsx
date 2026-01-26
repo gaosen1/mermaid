@@ -40,6 +40,8 @@ const ANIMATION_OPTIONS: { value: EdgeStyle['animation']; label: string }[] = [
   { value: 'none', label: '无' },
   { value: 'slow', label: '慢速' },
   { value: 'fast', label: '快速' },
+  { value: 'slow-leader', label: '主蚁慢' },
+  { value: 'fast-leader', label: '主蚁快' },
 ]
 
 interface EdgeStylePanelProps {

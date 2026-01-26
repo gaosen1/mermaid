@@ -7,7 +7,7 @@
 export interface EdgeStyle {
   color?: string
   stroke?: 'normal' | 'dotted' | 'thick'
-  animation?: 'none' | 'slow' | 'fast'
+  animation?: 'none' | 'slow' | 'fast' | 'slow-leader' | 'fast-leader'
 }
 
 export interface LinkStyleUpdate {
@@ -54,6 +54,12 @@ function edgeStyleToCss(style: EdgeStyle): string {
     case 'fast':
       parts.push('animation:mermaid-edge-dash 0.6s linear infinite')
       break
+    case 'slow-leader':
+      parts.push('animation:mermaid-edge-dash-leader 3s linear infinite')
+      break
+    case 'fast-leader':
+      parts.push('animation:mermaid-edge-dash-leader 1.2s linear infinite')
+      break
     case 'none':
       // 不添加动画
       break
@@ -96,10 +102,15 @@ function cssToEdgeStyle(cssString: string): EdgeStyle {
   }
 
   // 解析 animation
-  const animationMatch = cssString.match(/animation\s*:\s*mermaid-edge-dash\s+([\d.]+)s/)
+  const animationMatch = cssString.match(/animation\s*:\s*mermaid-edge-dash(?:-leader)?\s+([\d.]+)s/)
   if (animationMatch) {
     const duration = parseFloat(animationMatch[1])
-    style.animation = duration <= 1 ? 'fast' : 'slow'
+    const isLeader = cssString.includes('mermaid-edge-dash-leader')
+    if (isLeader) {
+      style.animation = duration <= 2 ? 'fast-leader' : 'slow-leader'
+    } else {
+      style.animation = duration <= 1 ? 'fast' : 'slow'
+    }
   } else if (!cssString.includes('animation')) {
     style.animation = 'none'
   }
@@ -229,4 +240,27 @@ export function mergeEdgeStyle(
     ...existing,
     ...updates,
   }
+}
+
+/**
+ * 解析 source 中所有的 edge 样式
+ * 返回所有带有 leader 动画的边缘索引和样式
+ */
+export function parseAllEdgeStylesFromSource(source: string): Array<{ index: number; style: EdgeStyle }> {
+  const linkStyles = parseLinkStyles(source)
+  const results: Array<{ index: number; style: EdgeStyle }> = []
+
+  for (const ls of linkStyles) {
+    const cssString = Object.entries(ls.styles)
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',')
+    const style = cssToEdgeStyle(cssString)
+
+    // 只返回有 leader 动画的样式（这些需要特殊处理）
+    if (style.animation === 'slow-leader' || style.animation === 'fast-leader') {
+      results.push({ index: ls.index, style })
+    }
+  }
+
+  return results
 }

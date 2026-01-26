@@ -129,6 +129,21 @@
   }
 }
 
+/* Edge Leader 动画 keyframes - 主蚂蚁效果 */
+/* 基础虚线层：普通行军蚁 */
+@keyframes mermaid-edge-dash-leader-base {
+  to {
+    stroke-dashoffset: -60;
+  }
+}
+
+/* Leader 层：加粗加长的主蚂蚁 */
+@keyframes mermaid-edge-dash-leader-dot {
+  to {
+    stroke-dashoffset: -60;
+  }
+}
+
 /* Edge 选中高亮样式 - 只在选中时显示 */
 path.edge-selected,
 path.flowchart-link.edge-selected {
