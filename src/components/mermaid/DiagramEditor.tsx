@@ -374,6 +374,8 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   // Node 双击编辑文字（原地编辑）
   const handleNodeDoubleClick = useCallback(
     (node: SelectedNode) => {
+      // 清除选中状态，避免退出编辑后样式面板自动弹出
+      setSelectedNode(null)
       startInlineEdit(node)
     },
     [startInlineEdit]
