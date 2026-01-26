@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { db } from '@/db'
 import { validateToken, initializeRepo, clearGitHubClient } from '@/services/github'
 import { getStoredToken, storeToken, clearToken } from '@/utils/tokenStorage'
+import { syncAll, startAutoSync, stopAutoSync, type SyncResult } from '@/services/sync'
 import type { SyncSettings, SyncStats } from '@/types/sync'
 
 interface SyncState {
@@ -27,6 +28,7 @@ interface SyncState {
   initialize: () => Promise<void>
   connect: (token: string) => Promise<void>
   disconnect: () => Promise<void>
+  syncNow: () => Promise<SyncResult>
   updateSettings: (settings: Partial<SyncSettings>) => void
   refreshStats: () => Promise<void>
   clearError: () => void
@@ -114,6 +116,12 @@ export const useSyncStore = create<SyncState>()(
 
         // 刷新统计
         await get().refreshStats()
+
+        // 如果启用了自动同步，启动自动同步
+        const { settings } = get()
+        if (settings.autoSync) {
+          startAutoSync(settings)
+        }
       } catch (error) {
         set({
           isConnecting: false,
@@ -127,6 +135,7 @@ export const useSyncStore = create<SyncState>()(
      * 断开连接
      */
     disconnect: async () => {
+      stopAutoSync()
       clearGitHubClient()
       await clearToken()
 
@@ -140,15 +149,83 @@ export const useSyncStore = create<SyncState>()(
     },
 
     /**
+     * 立即同步
+     */
+    syncNow: async () => {
+      const { isAuthenticated, isSyncing, settings } = get()
+
+      if (!isAuthenticated) {
+        return {
+          success: false,
+          pushed: 0,
+          pulled: 0,
+          conflicts: 0,
+          errors: ['Not authenticated'],
+        }
+      }
+
+      if (isSyncing) {
+        return {
+          success: false,
+          pushed: 0,
+          pulled: 0,
+          conflicts: 0,
+          errors: ['Sync already in progress'],
+        }
+      }
+
+      set({ isSyncing: true, syncError: null })
+
+      try {
+        const result = await syncAll(settings)
+
+        set({
+          isSyncing: false,
+          lastSyncTime: Date.now(),
+          syncError: result.success ? null : result.errors.join(', '),
+        })
+
+        // 刷新统计
+        await get().refreshStats()
+
+        return result
+      } catch (error) {
+        const errorMessage = (error as Error).message || 'Sync failed'
+        set({
+          isSyncing: false,
+          syncError: errorMessage,
+        })
+
+        return {
+          success: false,
+          pushed: 0,
+          pulled: 0,
+          conflicts: 0,
+          errors: [errorMessage],
+        }
+      }
+    },
+
+    /**
      * 更新设置
      */
     updateSettings: (updates: Partial<SyncSettings>) => {
-      set((state) => ({
-        settings: { ...state.settings, ...updates },
-      }))
+      const oldSettings = get().settings
+      const newSettings = { ...oldSettings, ...updates }
+
+      set({ settings: newSettings })
+
       // 持久化设置到 localStorage
-      const newSettings = { ...get().settings, ...updates }
       localStorage.setItem('sync_settings', JSON.stringify(newSettings))
+
+      // 处理自动同步设置变更
+      if (updates.autoSync !== undefined || updates.syncInterval !== undefined) {
+        if (newSettings.autoSync && get().isAuthenticated) {
+          startAutoSync(newSettings)
+        } else {
+          stopAutoSync()
+        }
+      }
     },
 
     /**
