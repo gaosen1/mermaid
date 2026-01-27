@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSyncStore } from '@/stores/syncStore'
+import { useSyncNotifications } from '@/hooks/useSyncNotifications'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Toaster } from '@/components/ui/sonner'
-import { SyncStatusIndicator } from '@/components/sync'
+import { SyncStatusIndicator, ConflictDialog } from '@/components/sync'
 import { HomePage } from '@/pages/HomePage'
 import { ProjectPage } from '@/pages/ProjectPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -16,14 +17,25 @@ type View = 'home' | 'project' | 'settings' | 'theme-test'
 
 export function AppLayout() {
   const { settings, loadSettings, updateSettings } = useSettingsStore()
-  const { initialize: initSync } = useSyncStore()
+  const { initialize: initSync, stats, settings: syncSettings } = useSyncStore()
   const [view, setView] = useState<View>('home')
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
+
+  // 启用同步通知
+  useSyncNotifications()
 
   useEffect(() => {
     loadSettings()
     initSync()
   }, [loadSettings, initSync])
+
+  // 当有冲突且策略为 ask 时，自动打开冲突对话框
+  useEffect(() => {
+    if (stats.conflictItems > 0 && syncSettings.conflictStrategy === 'ask') {
+      setConflictDialogOpen(true)
+    }
+  }, [stats.conflictItems, syncSettings.conflictStrategy])
 
   useEffect(() => {
     const root = window.document.documentElement
@@ -112,6 +124,7 @@ export function AppLayout() {
       </main>
 
       <Toaster />
+      <ConflictDialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen} />
     </div>
   )
 }

@@ -4,7 +4,7 @@
  */
 
 import { db } from '@/db'
-import type { Project, Diagram, Snapshot } from '@/types'
+import type { Project, Diagram } from '@/types'
 import type { SyncLogEntry } from '@/types/sync'
 import type { DiffResult, EntityType } from './dataSync'
 
@@ -108,9 +108,6 @@ export async function applyProjectResolution(
   remoteData: Project
 ): Promise<Project> {
   const data = resolution.keepVersion === 'local' ? localData : remoteData
-  const checksum = resolution.keepVersion === 'local'
-    ? resolution.entityId
-    : resolution.entityId
 
   await db.projects.update(resolution.entityId, {
     ...data,

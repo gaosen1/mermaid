@@ -1,2 +1,7 @@
 export { GitHubLoginDialog } from './GitHubLoginDialog'
 export { SyncStatusIndicator } from './SyncStatusIndicator'
+export { SyncStatusPanel } from './SyncStatusPanel'
+export { SyncSettingsPanel } from './SyncSettingsPanel'
+export { SyncQueuePanel } from './SyncQueuePanel'
+export { ConflictDialog } from './ConflictDialog'
+export { SyncStatusBadge } from './SyncStatusBadge'

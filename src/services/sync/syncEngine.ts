@@ -4,20 +4,16 @@
  */
 
 import { db } from '@/db'
-import type { Project, Diagram, Snapshot } from '@/types'
+import type { Project, Diagram } from '@/types'
 import type { SyncLogEntry, SyncSettings } from '@/types/sync'
-import { getFile, putFile, deleteFile, listDirectory } from '../github/files'
+import { getFile, putFile } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
 import {
   calculateProjectChecksum,
   calculateDiagramChecksum,
-  calculateSnapshotChecksum,
   compareProjects,
-  compareDiagrams,
-  type DiffResult,
 } from './dataSync'
-import * as syncQueue from './syncQueue'
-import { createConflictInfo, resolveConflict, type ConflictStrategy } from './conflictResolver'
+import { createConflictInfo, resolveConflict } from './conflictResolver'
 
 // GitHub 仓库路径常量
 const PATHS = {
@@ -106,7 +102,7 @@ export async function syncAll(
     // 4. 同步图表
     for (const diagram of localDiagrams) {
       try {
-        await syncDiagram(diagram, settings)
+        await syncDiagram(diagram)
         result.pushed++
       } catch (error) {
         result.errors.push(`Failed to sync diagram ${diagram.name}: ${error}`)
@@ -115,7 +111,7 @@ export async function syncAll(
 
     // 5. 拉取远端新增的数据
     onProgress?.({ total: 0, completed: 0, phase: 'pulling' })
-    const pullResult = await pullRemoteChanges(localProjects, remoteProjects, settings)
+    const pullResult = await pullRemoteChanges(localProjects, remoteProjects)
     result.pulled = pullResult.pulled
     result.conflicts += pullResult.conflicts
 
@@ -249,7 +245,7 @@ async function handleProjectConflict(
 /**
  * 同步单个图表
  */
-async function syncDiagram(diagram: Diagram, settings: SyncSettings): Promise<void> {
+async function syncDiagram(diagram: Diagram): Promise<void> {
   const checksum = await calculateDiagramChecksum(diagram)
   const content = formatDiagramContent(diagram)
 
@@ -297,8 +293,7 @@ ${diagram.source}`
  */
 async function pullRemoteChanges(
   localProjects: Project[],
-  remoteProjects: Map<string, Project>,
-  settings: SyncSettings
+  remoteProjects: Map<string, Project>
 ): Promise<{ pulled: number; conflicts: number }> {
   let pulled = 0
   let conflicts = 0

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
+import { useSyncStore } from '@/stores/syncStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -45,6 +46,7 @@ import {
   importFromZip,
   importFromJson,
 } from '@/utils/export'
+import { SyncStatusBadge } from '@/components/sync'
 import type { Project } from '@/types'
 
 interface ProjectListProps {
@@ -65,6 +67,8 @@ export function ProjectList({ onSelectProject }: ProjectListProps) {
     deleteProject,
     loadProjects,
   } = useProjectStore()
+
+  const { isAuthenticated } = useSyncStore()
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -279,7 +283,12 @@ export function ProjectList({ onSelectProject }: ProjectListProps) {
               >
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg">{project.name}</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">{project.name}</CardTitle>
+                      {isAuthenticated && project.syncStatus && (
+                        <SyncStatusBadge status={project.syncStatus} />
+                      )}
+                    </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="icon">

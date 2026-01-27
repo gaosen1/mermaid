@@ -12,8 +12,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
-import { GitHubLoginDialog } from '@/components/sync'
-import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle } from 'lucide-react'
+import {
+  GitHubLoginDialog,
+  SyncStatusPanel,
+  SyncSettingsPanel,
+  SyncQueuePanel,
+} from '@/components/sync'
+import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
@@ -23,10 +28,9 @@ export function SettingsPage() {
     userName,
     userLogin,
     syncError,
-    stats,
-    settings: syncSettings,
+    isSyncing,
     disconnect,
-    updateSettings: updateSyncSettings,
+    syncNow,
   } = useSyncStore()
   const [loginOpen, setLoginOpen] = useState(false)
 
@@ -51,6 +55,7 @@ export function SettingsPage() {
       </div>
 
       <div className="space-y-6">
+        {/* GitHub 连接状态卡片 */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -70,10 +75,21 @@ export function SettingsPage() {
                       <p className="text-sm text-muted-foreground">@{userLogin}</p>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={disconnect}>
-                    <LogOut className="h-4 w-4 mr-2" />
-                    断开连接
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => syncNow()}
+                      disabled={isSyncing}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                      {isSyncing ? '同步中...' : '立即同步'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={disconnect}>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      断开
+                    </Button>
+                  </div>
                 </div>
 
                 {syncError && (
@@ -82,64 +98,6 @@ export function SettingsPage() {
                     <span>{syncError}</span>
                   </div>
                 )}
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-muted-foreground">已同步项目</p>
-                    <p className="text-lg font-semibold">
-                      {stats.syncedProjects}/{stats.totalProjects}
-                    </p>
-                  </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-muted-foreground">已同步图表</p>
-                    <p className="text-lg font-semibold">
-                      {stats.syncedDiagrams}/{stats.totalDiagrams}
-                    </p>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>自动同步</Label>
-                    <p className="text-sm text-muted-foreground">自动将更改同步到云端</p>
-                  </div>
-                  <Select
-                    value={syncSettings.autoSync ? 'on' : 'off'}
-                    onValueChange={(v) => updateSyncSettings({ autoSync: v === 'on' })}
-                  >
-                    <SelectTrigger className="w-[100px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="on">开启</SelectItem>
-                      <SelectItem value="off">关闭</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div>
-                    <Label>冲突策略</Label>
-                    <p className="text-sm text-muted-foreground">当本地和云端数据冲突时</p>
-                  </div>
-                  <Select
-                    value={syncSettings.conflictStrategy}
-                    onValueChange={(v) =>
-                      updateSyncSettings({ conflictStrategy: v as 'local' | 'remote' | 'ask' })
-                    }
-                  >
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ask">询问</SelectItem>
-                      <SelectItem value="local">保留本地</SelectItem>
-                      <SelectItem value="remote">使用云端</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </>
             ) : (
               <div className="text-center py-4">
@@ -154,6 +112,15 @@ export function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* 同步状态面板 */}
+        {isAuthenticated && <SyncStatusPanel />}
+
+        {/* 同步设置面板 */}
+        <SyncSettingsPanel />
+
+        {/* 同步队列面板 */}
+        {isAuthenticated && <SyncQueuePanel />}
 
         <Card>
           <CardHeader>

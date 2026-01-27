@@ -59,7 +59,8 @@ export async function enqueue(
     createdAt: Date.now(),
   }
 
-  return await db.syncQueue.add(item)
+  const id = await db.syncQueue.add(item)
+  return id as number
 }
 
 /**

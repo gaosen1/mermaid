@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { useDiagramStore } from '@/stores/diagramStore'
+import { useSyncStore } from '@/stores/syncStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -30,6 +31,7 @@ import {
   FileCode2,
 } from 'lucide-react'
 import { exportDiagramToMmd, importFromMmd } from '@/utils/export'
+import { SyncStatusBadge } from '@/components/sync'
 import type { Diagram } from '@/types'
 
 interface DiagramListProps {
@@ -48,6 +50,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     loadDiagramsByProject,
     setCurrentDiagram,
   } = useDiagramStore()
+
+  const { isAuthenticated } = useSyncStore()
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -184,6 +188,9 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                 <div className="flex items-center gap-2 overflow-hidden">
                   <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <span className="truncate text-sm">{diagram.name}</span>
+                  {isAuthenticated && diagram.syncStatus && (
+                    <SyncStatusBadge status={diagram.syncStatus} size="sm" />
+                  )}
                 </div>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
