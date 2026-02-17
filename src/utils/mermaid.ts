@@ -94,19 +94,106 @@ export function getSvgFromContainer(container: HTMLElement): string | null {
   return new XMLSerializer().serializeToString(clone)
 }
 
+export function getPngSourceFromContainer(
+  container: HTMLElement
+): { svgString: string; width: number; height: number } | null {
+  const svg = container.querySelector('svg') as SVGSVGElement | null
+  if (!svg) return null
+
+  const clone = svg.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+  clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink')
+
+  let width = 0
+  let height = 0
+
+  try {
+    const bbox = svg.getBBox()
+    if (Number.isFinite(bbox.width) && Number.isFinite(bbox.height) && bbox.width > 0 && bbox.height > 0) {
+      const padding = 8
+      const x = bbox.x - padding
+      const y = bbox.y - padding
+      width = Math.ceil(bbox.width + padding * 2)
+      height = Math.ceil(bbox.height + padding * 2)
+
+      clone.setAttribute('viewBox', `${x} ${y} ${width} ${height}`)
+      clone.setAttribute('width', String(width))
+      clone.setAttribute('height', String(height))
+      clone.removeAttribute('style')
+    }
+  } catch {
+    // getBBox 在极少数场景可能不可用，交给后续解析兜底
+  }
+
+  return {
+    svgString: new XMLSerializer().serializeToString(clone),
+    width,
+    height,
+  }
+}
+
+function parseSvgLength(value: string | null): number | null {
+  if (!value) return null
+  const parsed = Number.parseFloat(value.replace('px', ''))
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function getSvgExportDimensions(svgString: string): { width: number; height: number; normalizedSvg: string } {
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(svgString, 'image/svg+xml')
+  const svg = doc.documentElement
+
+  const widthFromAttr = parseSvgLength(svg.getAttribute('width'))
+  const heightFromAttr = parseSvgLength(svg.getAttribute('height'))
+
+  let width = widthFromAttr
+  let height = heightFromAttr
+
+  const viewBox = svg.getAttribute('viewBox')
+  if (viewBox) {
+    const values = viewBox
+      .trim()
+      .split(/[\s,]+/)
+      .map((v) => Number.parseFloat(v))
+    if (values.length === 4 && values.every(Number.isFinite)) {
+      width = width ?? values[2]
+      height = height ?? values[3]
+    }
+  }
+
+  width = width && width > 0 ? width : 1200
+  height = height && height > 0 ? height : 800
+
+  svg.setAttribute('width', String(width))
+  svg.setAttribute('height', String(height))
+  svg.removeAttribute('style')
+
+  return {
+    width,
+    height,
+    normalizedSvg: new XMLSerializer().serializeToString(svg),
+  }
+}
+
 export async function exportToPng(
   svgString: string,
-  scale: number = 2
+  scale: number = 2,
+  preferredDimensions?: { width: number; height: number }
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    const { width: parsedWidth, height: parsedHeight, normalizedSvg } = getSvgExportDimensions(svgString)
+    const width =
+      preferredDimensions && preferredDimensions.width > 0 ? preferredDimensions.width : parsedWidth
+    const height =
+      preferredDimensions && preferredDimensions.height > 0 ? preferredDimensions.height : parsedHeight
     const img = new Image()
-    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' })
+    const svgBlob = new Blob([normalizedSvg], { type: 'image/svg+xml;charset=utf-8' })
     const url = URL.createObjectURL(svgBlob)
 
     img.onload = () => {
       const canvas = document.createElement('canvas')
-      canvas.width = img.width * scale
-      canvas.height = img.height * scale
+      canvas.width = Math.max(1, Math.round(width * scale))
+      canvas.height = Math.max(1, Math.round(height * scale))
 
       const ctx = canvas.getContext('2d')
       if (!ctx) {
@@ -117,7 +204,7 @@ export async function exportToPng(
       ctx.fillStyle = 'white'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
       ctx.scale(scale, scale)
-      ctx.drawImage(img, 0, 0)
+      ctx.drawImage(img, 0, 0, width, height)
 
       canvas.toBlob((blob) => {
         URL.revokeObjectURL(url)

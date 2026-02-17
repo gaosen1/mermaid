@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
-import { initMermaid, renderMermaid, getSvgFromContainer, exportToPng, exportToSvg } from '@/utils/mermaid'
+import {
+  initMermaid,
+  renderMermaid,
+  getSvgFromContainer,
+  getPngSourceFromContainer,
+  exportToPng,
+  exportToSvg
+} from '@/utils/mermaid'
 import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter } from '@/utils/dsl'
 import { saveAs } from 'file-saver'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -267,10 +274,14 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
     const handleExportPng = useCallback(async () => {
       if (!containerRef.current) return
-      const svgString = getSvgFromContainer(containerRef.current)
-      if (!svgString) return
+      const pngSource = getPngSourceFromContainer(containerRef.current)
+      if (!pngSource) return
       try {
-        const blob = await exportToPng(svgString)
+        const blob = await exportToPng(
+          pngSource.svgString,
+          2,
+          { width: pngSource.width, height: pngSource.height }
+        )
         saveAs(blob, 'diagram.png')
       } catch (err) {
         console.error('Export PNG failed:', err)
