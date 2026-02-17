@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useProjectStore } from '@/stores/projectStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { useSyncNotifications } from '@/hooks/useSyncNotifications'
 import { Button } from '@/components/ui/button'
@@ -15,20 +16,78 @@ import type { Project } from '@/types'
 
 type View = 'home' | 'project' | 'settings' | 'theme-test'
 
+interface HashRouteState {
+  view: View
+  projectId: string | null
+  diagramId: string | null
+}
+
+function parsePathRoute(pathname: string): HashRouteState {
+  const path = pathname.startsWith('/') ? pathname : `/${pathname}`
+  const segments = path.split('/').filter(Boolean)
+
+  if (segments[0] === 'project' && segments[1]) {
+    return {
+      view: 'project',
+      projectId: decodeURIComponent(segments[1]),
+      diagramId:
+        segments[2] === 'diagram' && segments[3]
+          ? decodeURIComponent(segments[3])
+          : null,
+    }
+  }
+
+  if (segments[0] === 'settings') {
+    return { view: 'settings', projectId: null, diagramId: null }
+  }
+
+  if (segments[0] === 'theme-test') {
+    return { view: 'theme-test', projectId: null, diagramId: null }
+  }
+
+  return { view: 'home', projectId: null, diagramId: null }
+}
+
+function buildPathRoute(view: View, projectId: string | null, diagramId: string | null): string {
+  if (view === 'project' && projectId) {
+    const encodedProjectId = encodeURIComponent(projectId)
+    if (diagramId) {
+      return `/project/${encodedProjectId}/diagram/${encodeURIComponent(diagramId)}`
+    }
+    return `/project/${encodedProjectId}`
+  }
+
+  if (view === 'settings') return '/settings'
+  if (view === 'theme-test') return '/theme-test'
+  return '/home'
+}
+
 export function AppLayout() {
   const { settings, loadSettings, updateSettings } = useSettingsStore()
+  const { loadProjects } = useProjectStore()
   const { initialize: initSync, stats, settings: syncSettings } = useSyncStore()
-  const [view, setView] = useState<View>('home')
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  const [routeState, setRouteState] = useState<HashRouteState>(() => parsePathRoute(window.location.pathname))
+  const { view, projectId: selectedProjectId, diagramId: selectedDiagramId } = routeState
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
 
   // 启用同步通知
   useSyncNotifications()
 
   useEffect(() => {
+    // 兼容旧 hash 链接：#/project/:id -> /project/:id
+    if (
+      window.location.hash.startsWith('#/') &&
+      (window.location.pathname === '/' || window.location.pathname === '/index.html')
+    ) {
+      const nextPath = window.location.hash.slice(1)
+      window.history.replaceState(null, '', nextPath)
+      setRouteState(parsePathRoute(nextPath))
+    }
+
     loadSettings()
+    loadProjects()
     initSync()
-  }, [loadSettings, initSync])
+  }, [initSync, loadProjects, loadSettings])
 
   // 当有冲突且策略为 ask 时，自动打开冲突对话框
   useEffect(() => {
@@ -51,15 +110,33 @@ export function AppLayout() {
     }
   }, [settings.theme])
 
-  const handleSelectProject = (project: Project) => {
-    setSelectedProjectId(project.id)
-    setView('project')
-  }
+  const handleSelectProject = useCallback((project: Project) => {
+    setRouteState({ view: 'project', projectId: project.id, diagramId: null })
+  }, [])
 
-  const handleBackToHome = () => {
-    setSelectedProjectId(null)
-    setView('home')
-  }
+  const handleBackToHome = useCallback(() => {
+    setRouteState({ view: 'home', projectId: null, diagramId: null })
+  }, [])
+
+  const handleSelectDiagram = useCallback((diagramId: string | null) => {
+    setRouteState((prev) => ({ ...prev, diagramId }))
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setRouteState(parsePathRoute(window.location.pathname))
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const nextPath = buildPathRoute(view, selectedProjectId, selectedDiagramId)
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, '', nextPath)
+    }
+  }, [view, selectedProjectId, selectedDiagramId])
 
   const cycleTheme = () => {
     const themes: Array<'light' | 'dark' | 'system'> = ['light', 'dark', 'system']
@@ -93,7 +170,7 @@ export function AppLayout() {
         <Button
           variant={view === 'settings' ? 'secondary' : 'ghost'}
           size="icon"
-          onClick={() => setView('settings')}
+          onClick={() => setRouteState({ view: 'settings', projectId: null, diagramId: null })}
           title="设置"
         >
           <Settings className="h-5 w-5" />
@@ -101,7 +178,7 @@ export function AppLayout() {
         <Button
           variant={view === 'theme-test' ? 'secondary' : 'ghost'}
           size="icon"
-          onClick={() => setView('theme-test')}
+          onClick={() => setRouteState({ view: 'theme-test', projectId: null, diagramId: null })}
           title="主题测试"
         >
           <TestTube className="h-5 w-5" />
@@ -117,7 +194,12 @@ export function AppLayout() {
       <main className="flex-1 overflow-hidden">
         {view === 'home' && <HomePage onSelectProject={handleSelectProject} />}
         {view === 'project' && selectedProjectId && (
-          <ProjectPage projectId={selectedProjectId} onBack={handleBackToHome} />
+          <ProjectPage
+            projectId={selectedProjectId}
+            initialDiagramId={selectedDiagramId}
+            onBack={handleBackToHome}
+            onSelectDiagram={handleSelectDiagram}
+          />
         )}
         {view === 'settings' && <SettingsPage />}
         {view === 'theme-test' && <MermaidThemeTestPage />}

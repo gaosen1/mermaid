@@ -40,12 +40,14 @@ function saveSidebarState(state: SidebarState) {
 
 interface ProjectPageProps {
   projectId: string
+  initialDiagramId?: string | null
   onBack: () => void
+  onSelectDiagram?: (diagramId: string | null) => void
 }
 
-export function ProjectPage({ projectId, onBack }: ProjectPageProps) {
-  const { projects, currentProject, setCurrentProject } = useProjectStore()
-  const { loadDiagramsByProject, currentDiagram, setCurrentDiagram } = useDiagramStore()
+export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSelectDiagram }: ProjectPageProps) {
+  const { projects, currentProject, loading: projectLoading, setCurrentProject } = useProjectStore()
+  const { diagrams, loadDiagramsByProject, currentDiagram, setCurrentDiagram } = useDiagramStore()
 
   const [sidebarState, setSidebarState] = useState<SidebarState>(loadSidebarState)
   const [isResizing, setIsResizing] = useState(false)
@@ -60,10 +62,8 @@ export function ProjectPage({ projectId, onBack }: ProjectPageProps) {
   }, [projectId, projects, setCurrentProject, loadDiagramsByProject])
 
   useEffect(() => {
-    return () => {
-      setCurrentDiagram(null)
-    }
-  }, [setCurrentDiagram])
+    setCurrentDiagram(null)
+  }, [projectId, setCurrentDiagram])
 
   // 持久化侧边栏状态
   useEffect(() => {
@@ -72,7 +72,19 @@ export function ProjectPage({ projectId, onBack }: ProjectPageProps) {
 
   const handleSelectDiagram = (diagram: Diagram) => {
     setCurrentDiagram(diagram)
+    onSelectDiagram?.(diagram.id)
   }
+
+  useEffect(() => {
+    if (!initialDiagramId || diagrams.length === 0) return
+    if (currentDiagram?.id === initialDiagramId) return
+
+    const target = diagrams.find((diagram) => diagram.id === initialDiagramId)
+    if (target) {
+      setCurrentDiagram(target)
+      onSelectDiagram?.(target.id)
+    }
+  }, [currentDiagram?.id, diagrams, initialDiagramId, onSelectDiagram, setCurrentDiagram])
 
   const toggleSidebar = useCallback(() => {
     setIsAnimating(true)
@@ -115,6 +127,16 @@ export function ProjectPage({ projectId, onBack }: ProjectPageProps) {
       document.body.style.userSelect = ''
     }
   }, [isResizing])
+
+  const projectExistsInList = projects.some((project) => project.id === projectId)
+
+  if (projectLoading || (!currentProject && (projects.length === 0 || projectExistsInList))) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-muted-foreground">加载中...</div>
+      </div>
+    )
+  }
 
   if (!currentProject) {
     return (

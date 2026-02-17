@@ -116,6 +116,18 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     onSelectDiagram(diagram)
   }
 
+  const handleDiagramClick = (e: React.MouseEvent<HTMLDivElement>, diagram: Diagram) => {
+    if (e.metaKey || e.ctrlKey) {
+      const url = new URL(window.location.href)
+      url.pathname = `/project/${encodeURIComponent(projectId)}/diagram/${encodeURIComponent(diagram.id)}`
+      url.hash = ''
+      window.open(url.toString(), '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    handleSelectDiagram(diagram)
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -183,7 +195,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                 className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent ${
                   currentDiagram?.id === diagram.id ? 'bg-accent' : ''
                 }`}
-                onClick={() => handleSelectDiagram(diagram)}
+                onClick={(e) => handleDiagramClick(e, diagram)}
               >
                 <div className="flex items-center gap-2 overflow-hidden">
                   <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
