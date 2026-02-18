@@ -627,6 +627,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         open={selectedEdge !== null}
         position={selectedEdge?.position || lastEdgePosition}
         currentStyle={edgeStyle}
+        mermaidTheme={theme}
         onStyleChange={handleEdgeStyleChange}
         onClose={handleEdgePanelClose}
       />
@@ -637,6 +638,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         position={selectedNode?.position || lastNodePosition}
         currentStyle={nodeStyle}
         currentShape={nodeShape}
+        mermaidTheme={theme}
         onStyleChange={handleNodeStyleChange}
         onShapeChange={handleNodeShapeChange}
         onClose={handleNodePanelClose}

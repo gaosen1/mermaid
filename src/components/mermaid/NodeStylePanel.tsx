@@ -2,31 +2,7 @@ import { useCallback, useMemo, useEffect, useRef } from 'react'
 import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 import type { NodeStyle, NodeShape } from '@/utils/nodeDsl'
-
-// 18 色调色板
-const COLOR_PALETTE = [
-  // 第一行：基础色
-  '#ef4444', // red
-  '#f97316', // orange
-  '#eab308', // yellow
-  '#22c55e', // green
-  '#14b8a6', // teal
-  '#3b82f6', // blue
-  // 第二行：深色
-  '#dc2626', // red-600
-  '#ea580c', // orange-600
-  '#ca8a04', // yellow-600
-  '#16a34a', // green-600
-  '#0d9488', // teal-600
-  '#2563eb', // blue-600
-  // 第三行：紫色和灰色
-  '#8b5cf6', // violet
-  '#a855f7', // purple
-  '#ec4899', // pink
-  '#6b7280', // gray
-  '#374151', // gray-700
-  '#1f2937', // gray-800
-]
+import { getColorPalette, type MermaidTheme } from '@/constants/colors'
 
 // 边框样式选项
 const STROKE_TYPE_OPTIONS: { value: NodeStyle['strokeType']; label: string; preview: string }[] = [
@@ -59,6 +35,7 @@ interface NodeStylePanelProps {
   position: { x: number; y: number }
   currentStyle: NodeStyle
   currentShape: NodeShape | null
+  mermaidTheme: MermaidTheme
   onStyleChange: (style: NodeStyle) => void
   onShapeChange: (shape: NodeShape) => void
   onClose: () => void
@@ -69,11 +46,13 @@ export function NodeStylePanel({
   position,
   currentStyle,
   currentShape,
+  mermaidTheme,
   onStyleChange,
   onShapeChange,
   onClose,
 }: NodeStylePanelProps) {
   const anchorRef = useRef<HTMLDivElement>(null)
+  const palette = useMemo(() => getColorPalette(mermaidTheme), [mermaidTheme])
 
   // 更新虚拟锚点位置
   useEffect(() => {
@@ -213,18 +192,18 @@ export function NodeStylePanel({
               )}
             </div>
             <div className="grid grid-cols-6 gap-1.5">
-              {COLOR_PALETTE.map((color) => (
+              {palette.map((entry) => (
                 <button
-                  key={`fill-${color}`}
+                  key={`fill-${entry.label}`}
                   className={cn(
+                    entry.tw,
                     'w-7 h-7 rounded-md border-2 transition-all hover:scale-110',
-                    selectedFill === color
+                    selectedFill === entry.hex
                       ? 'border-foreground ring-2 ring-foreground/20'
                       : 'border-transparent'
                   )}
-                  style={{ backgroundColor: color }}
-                  onClick={() => handleFillSelect(color)}
-                  title={color}
+                  onClick={() => handleFillSelect(entry.hex)}
+                  title={entry.label}
                 />
               ))}
             </div>
@@ -244,18 +223,18 @@ export function NodeStylePanel({
               )}
             </div>
             <div className="grid grid-cols-6 gap-1.5">
-              {COLOR_PALETTE.map((color) => (
+              {palette.map((entry) => (
                 <button
-                  key={`stroke-${color}`}
+                  key={`stroke-${entry.label}`}
                   className={cn(
+                    entry.tw,
                     'w-7 h-7 rounded-md border-2 transition-all hover:scale-110',
-                    selectedStroke === color
+                    selectedStroke === entry.hex
                       ? 'border-foreground ring-2 ring-foreground/20'
                       : 'border-transparent'
                   )}
-                  style={{ backgroundColor: color }}
-                  onClick={() => handleStrokeSelect(color)}
-                  title={color}
+                  onClick={() => handleStrokeSelect(entry.hex)}
+                  title={entry.label}
                 />
               ))}
             </div>
@@ -299,18 +278,18 @@ export function NodeStylePanel({
               )}
             </div>
             <div className="grid grid-cols-6 gap-1.5">
-              {COLOR_PALETTE.map((color) => (
+              {palette.map((entry) => (
                 <button
-                  key={`color-${color}`}
+                  key={`color-${entry.label}`}
                   className={cn(
+                    entry.tw,
                     'w-7 h-7 rounded-md border-2 transition-all hover:scale-110',
-                    selectedColor === color
+                    selectedColor === entry.hex
                       ? 'border-foreground ring-2 ring-foreground/20'
                       : 'border-transparent'
                   )}
-                  style={{ backgroundColor: color }}
-                  onClick={() => handleColorSelect(color)}
-                  title={color}
+                  onClick={() => handleColorSelect(entry.hex)}
+                  title={entry.label}
                 />
               ))}
             </div>
