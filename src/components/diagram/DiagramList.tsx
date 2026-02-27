@@ -29,14 +29,118 @@ import {
   Download,
   Upload,
   FileCode2,
+  GripVertical,
 } from 'lucide-react'
 import { exportDiagramToMmd, importFromMmd } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
 import type { Diagram } from '@/types'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 interface DiagramListProps {
   projectId: string
   onSelectDiagram: (diagram: Diagram) => void
+}
+
+interface SortableDiagramItemProps {
+  diagram: Diagram
+  isActive: boolean
+  isAuthenticated: boolean
+  onEdit: (diagram: Diagram) => void
+  onExport: (diagram: Diagram) => void
+  onDelete: (diagram: Diagram) => void
+  onClick: (e: React.MouseEvent<HTMLDivElement>, diagram: Diagram) => void
+}
+
+function SortableDiagramItem({
+  diagram,
+  isActive,
+  isAuthenticated,
+  onEdit,
+  onExport,
+  onDelete,
+  onClick,
+}: SortableDiagramItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: diagram.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent ${
+        isActive ? 'bg-accent' : ''
+      }`}
+      onClick={(e) => onClick(e, diagram)}
+    >
+      <div className="flex items-center gap-2 overflow-hidden flex-1">
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing shrink-0"
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </div>
+        <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="truncate text-sm">{diagram.name}</span>
+        {isAuthenticated && diagram.syncStatus && (
+          <SyncStatusBadge status={diagram.syncStatus} size="sm" />
+        )}
+      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+          <Button variant="ghost" size="icon" className="h-8 w-8">
+            <MoreVertical className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(diagram) }}>
+            <Pencil className="h-4 w-4 mr-2" />
+            重命名
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onExport(diagram) }}>
+            <Download className="h-4 w-4 mr-2" />
+            导出 .mmd
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={(e) => { e.stopPropagation(); onDelete(diagram) }}
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            删除
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
 }
 
 export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
@@ -49,6 +153,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     deleteDiagram,
     loadDiagramsByProject,
     setCurrentDiagram,
+    reorderDiagrams,
   } = useDiagramStore()
 
   const { isAuthenticated } = useSyncStore()
@@ -59,6 +164,25 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [newDiagramName, setNewDiagramName] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = diagrams.findIndex((d) => d.id === active.id)
+      const newIndex = diagrams.findIndex((d) => d.id === over.id)
+
+      const newDiagrams = arrayMove(diagrams, oldIndex, newIndex)
+      reorderDiagrams(newDiagrams.map((d) => d.id))
+    }
+  }
 
   const handleCreate = async () => {
     if (!newDiagramName.trim()) return
@@ -188,50 +312,31 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <p>暂无图表</p>
           </div>
         ) : (
-          <div className="p-2 space-y-1">
-            {diagrams.map((diagram) => (
-              <div
-                key={diagram.id}
-                className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent ${
-                  currentDiagram?.id === diagram.id ? 'bg-accent' : ''
-                }`}
-                onClick={(e) => handleDiagramClick(e, diagram)}
-              >
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="truncate text-sm">{diagram.name}</span>
-                  {isAuthenticated && diagram.syncStatus && (
-                    <SyncStatusBadge status={diagram.syncStatus} size="sm" />
-                  )}
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                    <Button variant="ghost" size="icon" className="h-8 w-8">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEditDialog(diagram) }}>
-                      <Pencil className="h-4 w-4 mr-2" />
-                      重命名
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleExport(diagram) }}>
-                      <Download className="h-4 w-4 mr-2" />
-                      导出 .mmd
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(diagram) }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      删除
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={diagrams.map((d) => d.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="p-2 space-y-1">
+                {diagrams.map((diagram) => (
+                  <SortableDiagramItem
+                    key={diagram.id}
+                    diagram={diagram}
+                    isActive={currentDiagram?.id === diagram.id}
+                    isAuthenticated={isAuthenticated}
+                    onEdit={openEditDialog}
+                    onExport={handleExport}
+                    onDelete={handleDelete}
+                    onClick={handleDiagramClick}
+                  />
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         )}
       </ScrollArea>
 

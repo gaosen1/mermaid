@@ -21,6 +21,7 @@ export interface Diagram {
   name: string
   source: string
   config?: DiagramConfig
+  order?: number
   createdAt: number
   updatedAt: number
   // 同步相关字段

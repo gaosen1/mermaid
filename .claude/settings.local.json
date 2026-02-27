@@ -23,7 +23,8 @@
       "Bash(npm search:*)",
       "Bash(pnpm lint:*)",
       "Bash(curl:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(pnpm run build:*)"
     ]
   }
 }

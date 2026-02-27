@@ -66,6 +66,40 @@ db.version(2)
     console.log('Database migrated to version 2 with sync support')
   })
 
+// 版本 3：添加图表排序支持
+db.version(3)
+  .stores({
+    projects: 'id, name, updatedAt, *tags, syncStatus, lastSyncTime',
+    diagrams: 'id, projectId, name, updatedAt, order, syncStatus, lastSyncTime',
+    snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+    settings: 'id',
+    syncLog: '++id, timestamp, status, entityType, entityId',
+    syncQueue: '++id, entityType, entityId, priority, createdAt',
+  })
+  .upgrade(async (tx) => {
+    // 为现有图表添加 order 字段
+    const diagrams = await tx.table('diagrams').toArray()
+    const diagramsByProject = new Map<string, Diagram[]>()
+
+    // 按项目分组
+    diagrams.forEach((diagram: Diagram) => {
+      if (!diagramsByProject.has(diagram.projectId)) {
+        diagramsByProject.set(diagram.projectId, [])
+      }
+      diagramsByProject.get(diagram.projectId)!.push(diagram)
+    })
+
+    // 为每个项目的图表设置顺序
+    for (const [, projectDiagrams] of diagramsByProject) {
+      projectDiagrams.sort((a, b) => b.updatedAt - a.updatedAt)
+      for (let i = 0; i < projectDiagrams.length; i++) {
+        await tx.table('diagrams').update(projectDiagrams[i].id, { order: i })
+      }
+    }
+
+    console.log('Database migrated to version 3 with diagram ordering support')
+  })
+
 export { db }
 
 export const DEFAULT_SETTINGS: UserSettings = {

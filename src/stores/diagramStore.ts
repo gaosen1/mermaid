@@ -14,6 +14,7 @@ interface DiagramState {
   updateDiagram: (id: string, updates: Partial<Omit<Diagram, 'id' | 'projectId' | 'createdAt'>>) => Promise<void>
   deleteDiagram: (id: string) => Promise<void>
   setCurrentDiagram: (diagram: Diagram | null) => void
+  reorderDiagrams: (diagramIds: string[]) => Promise<void>
 
   loadSnapshots: (diagramId: string) => Promise<void>
   createSnapshot: (diagramId: string, source: string, description?: string, isAuto?: boolean) => Promise<Snapshot>
@@ -38,24 +39,44 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     const diagrams = await db.diagrams
       .where('projectId')
       .equals(projectId)
-      .sortBy('updatedAt')
-    set({ diagrams: diagrams.reverse(), loading: false })
+      .toArray()
+
+    // 按 order 排序，如果没有 order 则按 updatedAt 排序
+    diagrams.sort((a, b) => {
+      if (a.order !== undefined && b.order !== undefined) {
+        return a.order - b.order
+      }
+      if (a.order !== undefined) return -1
+      if (b.order !== undefined) return 1
+      return b.updatedAt - a.updatedAt
+    })
+
+    set({ diagrams, loading: false })
   },
 
   createDiagram: async (projectId, name, source = DEFAULT_SOURCE, config) => {
     const now = Date.now()
+    const existingDiagrams = await db.diagrams
+      .where('projectId')
+      .equals(projectId)
+      .toArray()
+    const maxOrder = existingDiagrams.reduce((max, d) =>
+      d.order !== undefined ? Math.max(max, d.order) : max, -1
+    )
+
     const diagram: Diagram = {
       id: uuid(),
       projectId,
       name,
       source,
       config,
+      order: maxOrder + 1,
       createdAt: now,
       updatedAt: now,
     }
     await db.diagrams.add(diagram)
     await db.projects.update(projectId, { updatedAt: now })
-    set((state) => ({ diagrams: [diagram, ...state.diagrams] }))
+    set((state) => ({ diagrams: [...state.diagrams, diagram] }))
     return diagram
   },
 
@@ -93,6 +114,25 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
   },
 
   setCurrentDiagram: (diagram) => set({ currentDiagram: diagram }),
+
+  reorderDiagrams: async (diagramIds) => {
+    const updates = diagramIds.map((id, index) => ({
+      key: id,
+      changes: { order: index, updatedAt: Date.now() }
+    }))
+
+    await db.diagrams.bulkUpdate(updates)
+
+    set((state) => {
+      const diagramMap = new Map(state.diagrams.map(d => [d.id, d]))
+      const reorderedDiagrams = diagramIds
+        .map(id => diagramMap.get(id))
+        .filter((d): d is Diagram => d !== undefined)
+        .map((d, index) => ({ ...d, order: index, updatedAt: Date.now() }))
+
+      return { diagrams: reorderedDiagrams }
+    })
+  },
 
   loadSnapshots: async (diagramId) => {
     const snapshots = await db.snapshots
