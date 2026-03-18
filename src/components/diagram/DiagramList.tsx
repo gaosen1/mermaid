@@ -333,7 +333,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         />
       </div>
 
-      <ScrollArea className="diagram-list-scroll-area flex-1">
+      <ScrollArea
+        className="diagram-list-scroll-area flex-1"
+        viewportClassName="[&>div]:!block [&>div]:!min-w-0"
+        contentClassName="diagram-list-scroll-content block min-w-0"
+      >
         {diagrams.length === 0 ? (
           <div className="diagram-list-empty flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
             <FileCode2 className="diagram-list-empty-icon h-8 w-8 mb-2" />
