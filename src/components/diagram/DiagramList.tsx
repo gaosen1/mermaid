@@ -95,43 +95,57 @@ function SortableDiagramItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent ${
+      className={`diagram-list-item flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent ${
         isActive ? 'bg-accent' : ''
       }`}
       onClick={(e) => onClick(e, diagram)}
     >
-      <div className="flex items-center gap-2 overflow-hidden flex-1">
+      <div className="diagram-list-item-content flex items-center gap-2 overflow-hidden flex-1">
         <div
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing shrink-0"
+          className="diagram-list-item-drag-handle cursor-grab active:cursor-grabbing shrink-0"
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
-        <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="truncate text-sm">{diagram.name}</span>
+        <FileCode2 className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
         {isAuthenticated && diagram.syncStatus && (
-          <SyncStatusBadge status={diagram.syncStatus} size="sm" />
+          <SyncStatusBadge
+            status={diagram.syncStatus}
+            size="sm"
+            className="diagram-list-item-sync-status"
+          />
         )}
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="diagram-list-item-menu-trigger h-8 w-8"
+          >
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(diagram) }}>
+        <DropdownMenuContent align="end" className="diagram-list-item-menu">
+          <DropdownMenuItem
+            className="diagram-list-item-menu-rename"
+            onClick={(e) => { e.stopPropagation(); onEdit(diagram) }}
+          >
             <Pencil className="h-4 w-4 mr-2" />
             重命名
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onExport(diagram) }}>
+          <DropdownMenuItem
+            className="diagram-list-item-menu-export"
+            onClick={(e) => { e.stopPropagation(); onExport(diagram) }}
+          >
             <Download className="h-4 w-4 mr-2" />
             导出 .mmd
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-destructive"
+            className="diagram-list-item-menu-delete text-destructive"
             onClick={(e) => { e.stopPropagation(); onDelete(diagram) }}
           >
             <Trash2 className="h-4 w-4 mr-2" />
@@ -254,62 +268,76 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">加载中...</div>
+      <div className="diagram-list-loading flex items-center justify-center h-full">
+        <div className="diagram-list-loading-text text-muted-foreground">加载中...</div>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="p-3 border-b flex items-center gap-2">
+    <div className="diagram-list flex flex-col h-full">
+      <div className="diagram-list-toolbar p-3 border-b flex items-center gap-2">
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button size="sm" className="flex-1">
+            <Button size="sm" className="diagram-list-create-button flex-1">
               <Plus className="h-4 w-4 mr-1" />
               新建图表
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="diagram-list-create-dialog">
             <DialogHeader>
-              <DialogTitle>新建图表</DialogTitle>
-              <DialogDescription>创建一个新的 Mermaid 图表</DialogDescription>
+              <DialogTitle className="diagram-list-create-dialog-title">新建图表</DialogTitle>
+              <DialogDescription className="diagram-list-create-dialog-description">
+                创建一个新的 Mermaid 图表
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>图表名称</Label>
+            <div className="diagram-list-create-dialog-body space-y-4 py-4">
+              <div className="diagram-list-create-field space-y-2">
+                <Label className="diagram-list-create-label">图表名称</Label>
                 <Input
+                  className="diagram-list-create-input"
                   value={newDiagramName}
                   onChange={(e) => setNewDiagramName(e.target.value)}
                   placeholder="输入图表名称"
                 />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+            <DialogFooter className="diagram-list-create-dialog-footer">
+              <Button
+                variant="outline"
+                className="diagram-list-create-cancel"
+                onClick={() => setCreateDialogOpen(false)}
+              >
                 取消
               </Button>
-              <Button onClick={handleCreate}>创建</Button>
+              <Button className="diagram-list-create-confirm" onClick={handleCreate}>
+                创建
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="diagram-list-import-button"
+          onClick={() => fileInputRef.current?.click()}
+        >
           <Upload className="h-4 w-4" />
         </Button>
         <input
           ref={fileInputRef}
           type="file"
           accept=".mmd"
-          className="hidden"
+          className="diagram-list-import-input hidden"
           onChange={handleImport}
         />
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="diagram-list-scroll-area flex-1">
         {diagrams.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
-            <FileCode2 className="h-8 w-8 mb-2" />
-            <p>暂无图表</p>
+          <div className="diagram-list-empty flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
+            <FileCode2 className="diagram-list-empty-icon h-8 w-8 mb-2" />
+            <p className="diagram-list-empty-text">暂无图表</p>
           </div>
         ) : (
           <DndContext
@@ -321,7 +349,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               items={diagrams.map((d) => d.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="p-2 space-y-1">
+              <div className="diagram-list-items p-2 space-y-1">
                 {diagrams.map((diagram) => (
                   <SortableDiagramItem
                     key={diagram.id}
@@ -341,26 +369,35 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
       </ScrollArea>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="diagram-list-edit-dialog">
           <DialogHeader>
-            <DialogTitle>重命名图表</DialogTitle>
-            <DialogDescription>修改图表名称</DialogDescription>
+            <DialogTitle className="diagram-list-edit-dialog-title">重命名图表</DialogTitle>
+            <DialogDescription className="diagram-list-edit-dialog-description">
+              修改图表名称
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>图表名称</Label>
+          <div className="diagram-list-edit-dialog-body space-y-4 py-4">
+            <div className="diagram-list-edit-field space-y-2">
+              <Label className="diagram-list-edit-label">图表名称</Label>
               <Input
+                className="diagram-list-edit-input"
                 value={newDiagramName}
                 onChange={(e) => setNewDiagramName(e.target.value)}
                 placeholder="输入图表名称"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+          <DialogFooter className="diagram-list-edit-dialog-footer">
+            <Button
+              variant="outline"
+              className="diagram-list-edit-cancel"
+              onClick={() => setEditDialogOpen(false)}
+            >
               取消
             </Button>
-            <Button onClick={handleEdit}>保存</Button>
+            <Button className="diagram-list-edit-confirm" onClick={handleEdit}>
+              保存
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
