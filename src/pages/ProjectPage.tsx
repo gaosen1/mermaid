@@ -132,22 +132,22 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
 
   if (projectLoading || (!currentProject && (projects.length === 0 || projectExistsInList))) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">加载中...</div>
+      <div className="project-page-loading flex items-center justify-center h-full">
+        <div className="project-page-loading-text text-muted-foreground">加载中...</div>
       </div>
     )
   }
 
   if (!currentProject) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">项目不存在</div>
+      <div className="project-page-empty flex items-center justify-center h-full">
+        <div className="project-page-empty-text text-muted-foreground">项目不存在</div>
       </div>
     )
   }
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="project-page relative h-full w-full overflow-hidden">
       {/* 全屏画布 - 渲染器 */}
       {currentDiagram ? (
         <DiagramEditor
@@ -156,7 +156,7 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
           sidebarAnimating={isAnimating}
         />
       ) : (
-        <div className="flex items-center justify-center h-full text-muted-foreground bg-muted/30">
+        <div className="project-page-editor-empty flex items-center justify-center h-full text-muted-foreground bg-muted/30">
           选择或创建一个图表开始编辑
         </div>
       )}
@@ -164,6 +164,7 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
       {/* 浮层侧边栏 - 项目/图表列表 */}
       <div
         className={`
+          project-page-sidebar
           absolute top-0 left-0 bottom-0 z-30
           flex flex-col
           bg-background/95 backdrop-blur-md
@@ -174,40 +175,52 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
         style={{ width: sidebarState.width }}
       >
         {/* 项目头部 */}
-        <div className="p-3 border-b shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <Button variant="ghost" size="sm" onClick={onBack} className="h-8">
+        <div className="project-page-sidebar-header p-3 border-b shrink-0">
+          <div className="project-page-sidebar-header-actions flex items-center justify-between mb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onBack}
+              className="project-page-back-button h-8"
+            >
               <ArrowLeft className="h-4 w-4 mr-1" />
               返回
             </Button>
-            <Button variant="ghost" size="icon" onClick={toggleSidebar} title="收起侧栏" className="h-8 w-8">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
+              title="收起侧栏"
+              className="project-page-sidebar-collapse-button h-8 w-8"
+            >
               <PanelLeftClose className="h-4 w-4" />
             </Button>
           </div>
-          <h2 className="font-semibold truncate text-sm">{currentProject.name}</h2>
+          <h2 className="project-page-title font-semibold truncate text-sm">{currentProject.name}</h2>
           {currentProject.description && (
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="project-page-description text-xs text-muted-foreground truncate">
               {currentProject.description}
             </p>
           )}
         </div>
 
         {/* 图表列表区域 - 可折叠 */}
-        <div className="flex flex-col min-h-0 flex-1">
+        <div className="project-page-diagram-section flex flex-col min-h-0 flex-1">
           <button
-            className="flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground border-b"
+            className="project-page-diagram-section-toggle flex items-center justify-between px-3 py-2 text-xs font-medium text-muted-foreground hover:text-foreground border-b"
             onClick={toggleDiagramList}
           >
-            <span>图表列表</span>
+            <span className="project-page-diagram-section-title">图表列表</span>
             {sidebarState.diagramListCollapsed ? (
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDown className="project-page-diagram-section-icon h-3.5 w-3.5" />
             ) : (
-              <ChevronUp className="h-3.5 w-3.5" />
+              <ChevronUp className="project-page-diagram-section-icon h-3.5 w-3.5" />
             )}
           </button>
 
           <div
             className={`
+              project-page-diagram-section-content
               overflow-hidden transition-all duration-200
               ${sidebarState.diagramListCollapsed ? 'max-h-0' : 'flex-1 min-h-0'}
             `}
@@ -223,7 +236,7 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
       {/* 拖拽分隔条 */}
       {!sidebarState.collapsed && (
         <div
-          className="absolute top-0 bottom-0 w-1 z-40 bg-transparent hover:bg-primary/30 cursor-col-resize"
+          className="project-page-sidebar-resizer absolute top-0 bottom-0 w-1 z-40 bg-transparent hover:bg-primary/30 cursor-col-resize"
           style={{ left: sidebarState.width }}
           onMouseDown={handleMouseDown}
         />
@@ -235,7 +248,7 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
           variant="outline"
           size="icon"
           onClick={toggleSidebar}
-          className="absolute left-3 top-3 z-40 bg-background/80 backdrop-blur-sm shadow-lg"
+          className="project-page-sidebar-expand-button absolute left-3 top-3 z-40 bg-background/80 backdrop-blur-sm shadow-lg"
           title="展开侧栏"
         >
           <PanelLeft className="h-4 w-4" />
