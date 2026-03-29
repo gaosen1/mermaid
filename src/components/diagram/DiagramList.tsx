@@ -275,7 +275,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   }
 
   return (
-    <div className="diagram-list flex flex-col h-full">
+    <div className="diagram-list flex flex-col h-full min-h-0">
       <div className="diagram-list-toolbar p-3 border-b flex items-center gap-2">
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
@@ -334,8 +334,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
       </div>
 
       <ScrollArea
-        className="diagram-list-scroll-area flex-1"
-        viewportClassName="[&>div]:!block [&>div]:!min-w-0"
+        className="diagram-list-scroll-area flex-1 min-h-0"
+        viewportClassName="[&>div]:!block [&>div]:!min-w-0 min-h-0"
         contentClassName="diagram-list-scroll-content block min-w-0"
       >
         {diagrams.length === 0 ? (
