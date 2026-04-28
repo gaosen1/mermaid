@@ -3,6 +3,7 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { DiagramList } from '@/components/diagram/DiagramList'
 import { DiagramEditor } from '@/components/mermaid/DiagramEditor'
+import { HtmlDiagramEditor } from '@/components/html/HtmlDiagramEditor'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, PanelLeftClose, PanelLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Diagram } from '@/types'
@@ -150,11 +151,19 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
     <div className="project-page relative h-full w-full overflow-hidden">
       {/* 全屏画布 - 渲染器 */}
       {currentDiagram ? (
-        <DiagramEditor
-          diagramId={currentDiagram.id}
-          sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
-          sidebarAnimating={isAnimating}
-        />
+        currentDiagram.type === 'html' ? (
+          <HtmlDiagramEditor
+            diagramId={currentDiagram.id}
+            sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
+            sidebarAnimating={isAnimating}
+          />
+        ) : (
+          <DiagramEditor
+            diagramId={currentDiagram.id}
+            sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
+            sidebarAnimating={isAnimating}
+          />
+        )
       ) : (
         <div className="project-page-editor-empty flex items-center justify-center h-full text-muted-foreground bg-muted/30">
           选择或创建一个图表开始编辑

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -22,6 +23,13 @@ import {
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Plus,
   MoreVertical,
   Pencil,
@@ -31,9 +39,10 @@ import {
   FileCode2,
   GripVertical,
 } from 'lucide-react'
-import { exportDiagramToMmd, importFromMmd } from '@/utils/export'
+import { exportDiagram, importDiagram } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
-import type { Diagram } from '@/types'
+import type { Diagram, DiagramType } from '@/types'
+import { getDiagramAcceptTypes, getDiagramTypeLabel } from '@/utils/diagram'
 import {
   DndContext,
   closestCenter,
@@ -110,6 +119,9 @@ function SortableDiagramItem({
         </div>
         <FileCode2 className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
+        <Badge variant="outline" className="diagram-list-item-type text-[10px] uppercase tracking-wide">
+          {getDiagramTypeLabel(diagram.type)}
+        </Badge>
         {isAuthenticated && diagram.syncStatus && (
           <SyncStatusBadge
             status={diagram.syncStatus}
@@ -141,7 +153,7 @@ function SortableDiagramItem({
             onClick={(e) => { e.stopPropagation(); onExport(diagram) }}
           >
             <Download className="h-4 w-4 mr-2" />
-            导出 .mmd
+            导出 .{diagram.type === 'html' ? 'html' : 'mmd'}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -176,6 +188,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null)
   const [newDiagramName, setNewDiagramName] = useState('')
+  const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -200,10 +213,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
   const handleCreate = async () => {
     if (!newDiagramName.trim()) return
-    const diagram = await createDiagram(projectId, newDiagramName)
+    const diagram = await createDiagram(projectId, newDiagramName, newDiagramType)
     setCurrentDiagram(diagram)
     onSelectDiagram(diagram)
     setNewDiagramName('')
+    setNewDiagramType('mermaid')
     setCreateDialogOpen(false)
   }
 
@@ -222,7 +236,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   }
 
   const handleExport = async (diagram: Diagram) => {
-    await exportDiagramToMmd(diagram)
+    await exportDiagram(diagram)
   }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -230,7 +244,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     if (!file) return
 
     try {
-      const diagram = await importFromMmd(file, projectId)
+      const diagram = await importDiagram(file, projectId)
       await loadDiagramsByProject(projectId)
       setCurrentDiagram(diagram)
       onSelectDiagram(diagram)
@@ -288,7 +302,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <DialogHeader>
               <DialogTitle className="diagram-list-create-dialog-title">新建图表</DialogTitle>
               <DialogDescription className="diagram-list-create-dialog-description">
-                创建一个新的 Mermaid 图表
+                默认创建 Mermaid 图表，也可以手动切换为 HTML 图表
               </DialogDescription>
             </DialogHeader>
             <div className="diagram-list-create-dialog-body space-y-4 py-4">
@@ -300,6 +314,18 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   onChange={(e) => setNewDiagramName(e.target.value)}
                   placeholder="输入图表名称"
                 />
+              </div>
+              <div className="diagram-list-create-field space-y-2">
+                <Label className="diagram-list-create-label">图表类型</Label>
+                <Select value={newDiagramType} onValueChange={(value) => setNewDiagramType(value as DiagramType)}>
+                  <SelectTrigger className="diagram-list-create-type-trigger">
+                    <SelectValue placeholder="选择图表类型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mermaid">Mermaid</SelectItem>
+                    <SelectItem value="html">HTML</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <DialogFooter className="diagram-list-create-dialog-footer">
@@ -327,7 +353,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".mmd"
+          accept={getDiagramAcceptTypes()}
           className="diagram-list-import-input hidden"
           onChange={handleImport}
         />

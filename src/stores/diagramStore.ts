@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { db } from '@/db'
-import type { Diagram, DiagramConfig, Snapshot } from '@/types'
+import type { Diagram, DiagramConfig, DiagramType, Snapshot } from '@/types'
 
 interface DiagramState {
   diagrams: Diagram[]
@@ -10,7 +10,13 @@ interface DiagramState {
   loading: boolean
 
   loadDiagramsByProject: (projectId: string) => Promise<void>
-  createDiagram: (projectId: string, name: string, source?: string, config?: DiagramConfig) => Promise<Diagram>
+  createDiagram: (
+    projectId: string,
+    name: string,
+    type?: DiagramType,
+    source?: string,
+    config?: DiagramConfig
+  ) => Promise<Diagram>
   updateDiagram: (id: string, updates: Partial<Omit<Diagram, 'id' | 'projectId' | 'createdAt'>>) => Promise<void>
   deleteDiagram: (id: string) => Promise<void>
   setCurrentDiagram: (diagram: Diagram | null) => void
@@ -27,6 +33,65 @@ const DEFAULT_SOURCE = `graph TD
     B -->|是| C[执行操作]
     B -->|否| D[结束]
     C --> D`
+
+const DEFAULT_HTML_SOURCE = `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HTML 图表</title>
+  <style>
+    :root {
+      --bg: #f7f5ef;
+      --card: #ffffff;
+      --border: #d7d0bf;
+      --text: #1f1e1a;
+      --accent: #1f6feb;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "SF Mono", Consolas, monospace;
+    }
+
+    .card {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--card);
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 24px;
+    }
+
+    p {
+      margin: 0;
+      line-height: 1.6;
+    }
+
+    strong {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <section class="card">
+    <h1>HTML 图表</h1>
+    <p>这里可以直接编写完整的 <strong>HTML + CSS</strong> 内容进行渲染。</p>
+  </section>
+</body>
+</html>`
 
 export const useDiagramStore = create<DiagramState>((set, get) => ({
   diagrams: [],
@@ -54,7 +119,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     set({ diagrams, loading: false })
   },
 
-  createDiagram: async (projectId, name, source = DEFAULT_SOURCE, config) => {
+  createDiagram: async (projectId, name, type = 'mermaid', source, config) => {
     const now = Date.now()
     const existingDiagrams = await db.diagrams
       .where('projectId')
@@ -68,8 +133,9 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       id: uuid(),
       projectId,
       name,
-      source,
-      config,
+      type,
+      source: source || (type === 'html' ? DEFAULT_HTML_SOURCE : DEFAULT_SOURCE),
+      config: type === 'mermaid' ? config : undefined,
       order: maxOrder + 1,
       createdAt: now,
       updatedAt: now,

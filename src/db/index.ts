@@ -100,6 +100,27 @@ db.version(3)
     console.log('Database migrated to version 3 with diagram ordering support')
   })
 
+// 版本 4：添加图表类型支持
+db.version(4)
+  .stores({
+    projects: 'id, name, updatedAt, *tags, syncStatus, lastSyncTime',
+    diagrams: 'id, projectId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+    snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+    settings: 'id',
+    syncLog: '++id, timestamp, status, entityType, entityId',
+    syncQueue: '++id, entityType, entityId, priority, createdAt',
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table('diagrams')
+      .toCollection()
+      .modify((diagram: Diagram) => {
+        diagram.type = diagram.type || 'mermaid'
+      })
+
+    console.log('Database migrated to version 4 with diagram type support')
+  })
+
 export { db }
 
 export const DEFAULT_SETTINGS: UserSettings = {

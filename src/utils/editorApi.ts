@@ -9,6 +9,7 @@ export function createEditorAPI(): EditorAPI {
         id: graph.id,
         projectId: '',
         name: graph.name,
+        type: graph.type || 'mermaid',
         source: graph.source,
         createdAt: graph.lastModified,
         updatedAt: graph.lastModified,

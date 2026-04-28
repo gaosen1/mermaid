@@ -3,6 +3,7 @@ import { saveAs } from 'file-saver'
 import { db } from '@/db'
 import { v4 as uuid } from 'uuid'
 import type { Project, Diagram, DiagramConfig } from '@/types'
+import { getDiagramFileExtension, getDiagramTypeFromFilename } from '@/utils/diagram'
 
 export interface ExportedProject {
   version: string
@@ -10,23 +11,12 @@ export interface ExportedProject {
   diagrams: Diagram[]
 }
 
-export async function exportDiagramToMmd(diagram: Diagram): Promise<void> {
-  let content = diagram.source
-
-  if (diagram.config) {
-    const configLines = ['---', 'config:']
-    if (diagram.config.layout) {
-      configLines.push(`  layout: ${diagram.config.layout}`)
-    }
-    if (diagram.config.theme) {
-      configLines.push(`  theme: ${diagram.config.theme}`)
-    }
-    configLines.push('---', '')
-    content = configLines.join('\n') + content
-  }
-
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
-  saveAs(blob, `${diagram.name}.mmd`)
+export async function exportDiagram(diagram: Diagram): Promise<void> {
+  const content = serializeDiagramSource(diagram)
+  const extension = getDiagramFileExtension(diagram.type)
+  const mimeType = diagram.type === 'html' ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8'
+  const blob = new Blob([content], { type: mimeType })
+  saveAs(blob, `${diagram.name}.${extension}`)
 }
 
 export async function exportProjectToZip(project: Project): Promise<void> {
@@ -42,19 +32,8 @@ export async function exportProjectToZip(project: Project): Promise<void> {
   zip.file('metadata.json', JSON.stringify(metadata, null, 2))
 
   for (const diagram of diagrams) {
-    let content = diagram.source
-    if (diagram.config) {
-      const configLines = ['---', 'config:']
-      if (diagram.config.layout) {
-        configLines.push(`  layout: ${diagram.config.layout}`)
-      }
-      if (diagram.config.theme) {
-        configLines.push(`  theme: ${diagram.config.theme}`)
-      }
-      configLines.push('---', '')
-      content = configLines.join('\n') + content
-    }
-    zip.file(`${diagram.name}.mmd`, content)
+    const extension = getDiagramFileExtension(diagram.type)
+    zip.file(`${diagram.name}.${extension}`, serializeDiagramSource(diagram))
   }
 
   const blob = await zip.generateAsync({ type: 'blob' })
@@ -74,19 +53,29 @@ export async function exportProjectToJson(project: Project): Promise<void> {
   saveAs(blob, `${project.name}.json`)
 }
 
-export async function importFromMmd(file: File, projectId: string): Promise<Diagram> {
+export async function importDiagram(file: File, projectId: string): Promise<Diagram> {
   const content = await file.text()
-  const name = file.name.replace(/\.mmd$/i, '')
+  const type = getDiagramTypeFromFilename(file.name)
 
-  const { config, source } = parseFrontmatterFromContent(content)
+  if (!type) {
+    throw new Error('Unsupported diagram file type')
+  }
+
+  const name = file.name.replace(/\.(mmd|html?)$/i, '')
+
+  const { config, source } =
+    type === 'mermaid'
+      ? parseFrontmatterFromContent(content)
+      : { config: null, source: content }
 
   const now = Date.now()
   const diagram: Diagram = {
     id: uuid(),
     projectId,
     name,
+    type,
     source,
-    config: config || undefined,
+    config: type === 'mermaid' ? config || undefined : undefined,
     createdAt: now,
     updatedAt: now,
   }
@@ -120,6 +109,7 @@ export async function importFromZip(file: File): Promise<Project> {
     ...d,
     id: uuid(),
     projectId: newProjectId,
+    type: d.type || 'mermaid',
     createdAt: now,
     updatedAt: now,
   }))
@@ -150,6 +140,7 @@ export async function importFromJson(file: File): Promise<Project> {
     ...d,
     id: uuid(),
     projectId: newProjectId,
+    type: d.type || 'mermaid',
     createdAt: now,
     updatedAt: now,
   }))
@@ -194,4 +185,28 @@ function parseFrontmatterFromContent(content: string): { config: DiagramConfig |
   } catch {
     return { config: null, source: content }
   }
+}
+
+function serializeDiagramSource(diagram: Diagram): string {
+  if (diagram.type === 'html') {
+    return diagram.source
+  }
+
+  return serializeMermaidSource(diagram.source, diagram.config)
+}
+
+function serializeMermaidSource(source: string, config?: DiagramConfig): string {
+  if (!config) {
+    return source
+  }
+
+  const configLines = ['---', 'config:']
+  if (config.layout) {
+    configLines.push(`  layout: ${config.layout}`)
+  }
+  if (config.theme) {
+    configLines.push(`  theme: ${config.theme}`)
+  }
+  configLines.push('---', '')
+  return configLines.join('\n') + source
 }

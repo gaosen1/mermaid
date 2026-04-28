@@ -11,6 +11,7 @@ interface CodeEditorProps {
   placeholder?: string
   readOnly?: boolean
   darkMode?: boolean
+  language?: 'mermaid' | 'plain'
 }
 
 const baseTheme = EditorView.theme({
@@ -92,7 +93,15 @@ export function CodeEditor({
   placeholder = '在此输入 Mermaid 代码...',
   readOnly = false,
   darkMode = false,
+  language = 'mermaid',
 }: CodeEditorProps) {
+  const extensions = [
+    language === 'mermaid' ? mermaid() : [],
+    baseTheme,
+    darkMode ? oneDark : lightTheme,
+    darkMode ? darkThemeOverride : [],
+  ].flat()
+
   return (
     <div className={cn('border rounded-lg overflow-hidden', className)}>
       <CodeMirror
@@ -100,12 +109,7 @@ export function CodeEditor({
         onChange={onChange}
         placeholder={placeholder}
         readOnly={readOnly}
-        extensions={[
-          mermaid(),
-          baseTheme,
-          darkMode ? oneDark : lightTheme,
-          darkMode ? darkThemeOverride : [],
-        ].flat()}
+        extensions={extensions}
         theme={darkMode ? 'dark' : 'light'}
         basicSetup={{
           lineNumbers: true,

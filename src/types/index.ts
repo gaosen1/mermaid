@@ -1,5 +1,7 @@
 import type { SyncStatus } from './sync'
 
+export type DiagramType = 'mermaid' | 'html'
+
 export interface Project {
   id: string
   name: string
@@ -19,6 +21,7 @@ export interface Diagram {
   id: string
   projectId: string
   name: string
+  type: DiagramType
   source: string
   config?: DiagramConfig
   order?: number
@@ -68,6 +71,7 @@ export interface GraphModel {
   name: string
   source: string
   lastModified: number
+  type?: DiagramType
   metadata?: Record<string, unknown>
 }
 

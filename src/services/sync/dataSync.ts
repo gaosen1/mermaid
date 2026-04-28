@@ -66,6 +66,7 @@ export async function calculateDiagramChecksum(diagram: Diagram): Promise<string
     id: diagram.id,
     projectId: diagram.projectId,
     name: diagram.name,
+    type: diagram.type,
     source: diagram.source,
     config: diagram.config,
     createdAt: diagram.createdAt,

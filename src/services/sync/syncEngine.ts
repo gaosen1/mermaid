@@ -8,6 +8,7 @@ import type { Project, Diagram } from '@/types'
 import type { SyncLogEntry, SyncSettings } from '@/types/sync'
 import { getFile, putFile } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
+import { getDiagramFileExtension } from '@/utils/diagram'
 import {
   calculateProjectChecksum,
   calculateDiagramChecksum,
@@ -19,7 +20,6 @@ import { createConflictInfo, resolveConflict } from './conflictResolver'
 const PATHS = {
   PROJECTS_JSON: 'data/projects.json',
   PROJECT_META: (id: string) => `data/projects/${id}/meta.json`,
-  DIAGRAM: (projectId: string, id: string) => `data/projects/${projectId}/diagrams/${id}.mmd`,
   SNAPSHOT: (diagramId: string, id: string) => `data/snapshots/${diagramId}/${id}.json`,
 }
 
@@ -250,7 +250,7 @@ async function syncDiagram(diagram: Diagram): Promise<void> {
   const content = formatDiagramContent(diagram)
 
   await putFile(
-    PATHS.DIAGRAM(diagram.projectId, diagram.id),
+    getDiagramRemotePath(diagram),
     content,
     `Sync diagram: ${diagram.name}`
   )
@@ -265,9 +265,13 @@ async function syncDiagram(diagram: Diagram): Promise<void> {
 }
 
 /**
- * 格式化图表内容为 .mmd 文件格式
+ * 格式化图表内容
  */
 function formatDiagramContent(diagram: Diagram): string {
+  if (diagram.type === 'html') {
+    return diagram.source
+  }
+
   const meta = {
     id: diagram.id,
     name: diagram.name,
@@ -286,6 +290,11 @@ meta:
 config: ${JSON.stringify(diagram.config || {})}
 ---
 ${diagram.source}`
+}
+
+function getDiagramRemotePath(diagram: Diagram): string {
+  const extension = getDiagramFileExtension(diagram.type)
+  return `data/projects/${diagram.projectId}/diagrams/${diagram.id}.${extension}`
 }
 
 /**
