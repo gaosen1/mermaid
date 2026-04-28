@@ -296,7 +296,7 @@ async function pullRemoteChanges(
   remoteProjects: Map<string, Project>
 ): Promise<{ pulled: number; conflicts: number }> {
   let pulled = 0
-  let conflicts = 0
+  const conflicts = 0
 
   const localIds = new Set(localProjects.map((p) => p.id))
 

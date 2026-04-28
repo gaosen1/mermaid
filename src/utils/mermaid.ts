@@ -138,10 +138,105 @@ function parseSvgLength(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
+function isExternalReference(value: string | null): boolean {
+  if (!value) return false
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('data:')) return false
+  return /^(https?:)?\/\//i.test(trimmed)
+}
+
+function stripExternalResourceReferences(svg: SVGSVGElement): void {
+  svg.querySelectorAll('image, use, pattern, filter, feImage').forEach((el) => {
+    const href = el.getAttribute('href') ?? el.getAttribute('xlink:href')
+    if (isExternalReference(href)) {
+      el.remove()
+    }
+  })
+
+  svg.querySelectorAll('[href], [xlink\\:href]').forEach((el) => {
+    const href = el.getAttribute('href')
+    const xlinkHref = el.getAttribute('xlink:href')
+
+    if (isExternalReference(href)) {
+      el.removeAttribute('href')
+    }
+    if (isExternalReference(xlinkHref)) {
+      el.removeAttribute('xlink:href')
+    }
+  })
+
+  svg.querySelectorAll('[style]').forEach((el) => {
+    const style = el.getAttribute('style')
+    if (!style) return
+
+    const cleaned = style
+      .replace(/@import[^;]+;?/gi, '')
+      .replace(/url\(\s*(['"]?)(?!#|data:)[^)]+\1\s*\)/gi, 'none')
+      .trim()
+
+    if (cleaned) {
+      el.setAttribute('style', cleaned)
+    } else {
+      el.removeAttribute('style')
+    }
+  })
+
+  svg.querySelectorAll('style').forEach((styleEl) => {
+    styleEl.textContent = (styleEl.textContent ?? '')
+      .replace(/@import[^;]+;?/gi, '')
+      .replace(/url\(\s*(['"]?)(?!#|data:)[^)]+\1\s*\)/gi, 'none')
+  })
+}
+
+function getForeignObjectText(foreignObject: SVGForeignObjectElement): string {
+  return (foreignObject.textContent ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function replaceForeignObjectsWithSvgText(svg: SVGSVGElement): void {
+  svg.querySelectorAll('foreignObject').forEach((foreignObject) => {
+    const text = getForeignObjectText(foreignObject as SVGForeignObjectElement)
+    if (!text) {
+      foreignObject.remove()
+      return
+    }
+
+    const x = Number.parseFloat(foreignObject.getAttribute('x') ?? '0') || 0
+    const y = Number.parseFloat(foreignObject.getAttribute('y') ?? '0') || 0
+    const width = parseSvgLength(foreignObject.getAttribute('width')) ?? 0
+    const height = parseSvgLength(foreignObject.getAttribute('height')) ?? 0
+
+    const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+    textEl.setAttribute('x', String(x + width / 2))
+    textEl.setAttribute('y', String(y + height / 2))
+    textEl.setAttribute('text-anchor', 'middle')
+    textEl.setAttribute('dominant-baseline', 'middle')
+    textEl.setAttribute('font-family', 'Arial, Helvetica, sans-serif')
+    textEl.setAttribute('font-size', '14')
+    textEl.setAttribute('fill', 'currentColor')
+    textEl.textContent = text
+
+    const labelClass = foreignObject.querySelector('[class]')?.getAttribute('class')
+    if (labelClass) {
+      textEl.setAttribute('class', labelClass)
+    }
+
+    foreignObject.replaceWith(textEl)
+  })
+}
+
+function makeSvgCanvasSafe(svg: SVGSVGElement): void {
+  replaceForeignObjectsWithSvgText(svg)
+  stripExternalResourceReferences(svg)
+}
+
 function getSvgExportDimensions(svgString: string): { width: number; height: number; normalizedSvg: string } {
   const parser = new DOMParser()
   const doc = parser.parseFromString(svgString, 'image/svg+xml')
-  const svg = doc.documentElement
+  const svg = doc.documentElement as unknown as SVGSVGElement
+
+  if (svg.tagName.toLowerCase() !== 'svg') {
+    throw new Error('Invalid SVG content')
+  }
 
   const widthFromAttr = parseSvgLength(svg.getAttribute('width'))
   const heightFromAttr = parseSvgLength(svg.getAttribute('height'))
@@ -167,6 +262,7 @@ function getSvgExportDimensions(svgString: string): { width: number; height: num
   svg.setAttribute('width', String(width))
   svg.setAttribute('height', String(height))
   svg.removeAttribute('style')
+  makeSvgCanvasSafe(svg)
 
   return {
     width,
