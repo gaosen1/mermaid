@@ -3,6 +3,7 @@ import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { CodeEditor } from './CodeEditor'
 import { EdgeStylePanel } from './EdgeStylePanel'
 import { NodeStylePanel } from './NodeStylePanel'
+import { MermaidDslHelpDialog } from './MermaidDslHelpDialog'
 import { useSourceSync } from './useSourceSync'
 import { useInlineTextEdit } from './useInlineTextEdit'
 import { Button } from '@/components/ui/button'
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown } from 'lucide-react'
+import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText } from 'lucide-react'
 import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import {
   parseNodeStyleFromSource,
@@ -81,6 +82,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [isPanelHovered, setIsPanelHovered] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
+  const [dslHelpOpen, setDslHelpOpen] = useState(false)
   const autoSaveTimerRef = useRef<number | null>(null)
   const rendererRef = useRef<MermaidRendererRef>(null)
 
@@ -491,6 +493,17 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
           </Select>
 
           <div className="flex items-center gap-1 ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDslHelpOpen(true)}
+              className="h-8 text-xs"
+              title="自定义样式说明"
+            >
+              <BookOpenText className="h-3.5 w-3.5 mr-1" />
+              样式说明
+            </Button>
+
             <Button variant="outline" size="sm" onClick={() => handleSave(false)} className="h-8 text-xs">
               <Save className="h-3.5 w-3.5 mr-1" />
               保存
@@ -643,6 +656,8 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         onShapeChange={handleNodeShapeChange}
         onClose={handleNodePanelClose}
       />
+
+      <MermaidDslHelpDialog open={dslHelpOpen} onOpenChange={setDslHelpOpen} />
     </div>
   )
 }
