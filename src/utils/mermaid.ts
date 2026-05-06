@@ -188,14 +188,56 @@ function stripExternalResourceReferences(svg: SVGSVGElement): void {
   })
 }
 
-function getForeignObjectText(foreignObject: SVGForeignObjectElement): string {
-  return (foreignObject.textContent ?? '').replace(/\s+/g, ' ').trim()
+function collectForeignObjectTextLines(foreignObject: SVGForeignObjectElement): string[] {
+  const lines: string[] = []
+  let currentLine = ''
+
+  const pushLine = () => {
+    const text = currentLine.replace(/\s+/g, ' ').trim()
+    if (text) {
+      lines.push(text)
+    }
+    currentLine = ''
+  }
+
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      currentLine += node.textContent ?? ''
+      return
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return
+    }
+
+    const element = node as Element
+    const tagName = element.tagName.toLowerCase()
+
+    if (tagName === 'br') {
+      pushLine()
+      return
+    }
+
+    if (tagName === 'p' || tagName === 'div') {
+      pushLine()
+      element.childNodes.forEach(walk)
+      pushLine()
+      return
+    }
+
+    element.childNodes.forEach(walk)
+  }
+
+  foreignObject.childNodes.forEach(walk)
+  pushLine()
+
+  return lines
 }
 
 function replaceForeignObjectsWithSvgText(svg: SVGSVGElement): void {
   svg.querySelectorAll('foreignObject').forEach((foreignObject) => {
-    const text = getForeignObjectText(foreignObject as SVGForeignObjectElement)
-    if (!text) {
+    const lines = collectForeignObjectTextLines(foreignObject as SVGForeignObjectElement)
+    if (lines.length === 0) {
       foreignObject.remove()
       return
     }
@@ -213,7 +255,16 @@ function replaceForeignObjectsWithSvgText(svg: SVGSVGElement): void {
     textEl.setAttribute('font-family', 'Arial, Helvetica, sans-serif')
     textEl.setAttribute('font-size', '14')
     textEl.setAttribute('fill', 'currentColor')
-    textEl.textContent = text
+
+    const lineHeight = 16
+    const startDy = -((lines.length - 1) * lineHeight) / 2
+    lines.forEach((line, index) => {
+      const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan')
+      tspan.setAttribute('x', String(x + width / 2))
+      tspan.setAttribute('dy', index === 0 ? String(startDy) : String(lineHeight))
+      tspan.textContent = line
+      textEl.appendChild(tspan)
+    })
 
     const labelClass = foreignObject.querySelector('[class]')?.getAttribute('class')
     if (labelClass) {
