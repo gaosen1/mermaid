@@ -23,6 +23,71 @@ import type { EdgeStyle } from '@/utils/edgeDsl'
 import { parseAllEdgeStylesFromSource } from '@/utils/edgeDsl'
 import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 
+const DARK_EXPORT_FALLBACK_THEME = 'default'
+const SVG_NS = 'http://www.w3.org/2000/svg'
+type MermaidTheme = NonNullable<MermaidRendererProps['theme']>
+
+interface ExportSvgSource {
+  svgString: string
+  width: number
+  height: number
+}
+
+function ensureLightSvgBackground(svg: SVGSVGElement): void {
+  svg.style.backgroundColor = '#ffffff'
+
+  const existingBackground = svg.querySelector(':scope > rect[data-export-background="true"]')
+  if (existingBackground) return
+
+  const rect = document.createElementNS(SVG_NS, 'rect')
+  const viewBox = svg.getAttribute('viewBox')
+  const values = viewBox
+    ?.trim()
+    .split(/[\s,]+/)
+    .map((value) => Number.parseFloat(value))
+
+  if (values?.length === 4 && values.every(Number.isFinite)) {
+    rect.setAttribute('x', String(values[0]))
+    rect.setAttribute('y', String(values[1]))
+    rect.setAttribute('width', String(values[2]))
+    rect.setAttribute('height', String(values[3]))
+  } else {
+    rect.setAttribute('x', '0')
+    rect.setAttribute('y', '0')
+    rect.setAttribute('width', '100%')
+    rect.setAttribute('height', '100%')
+  }
+
+  rect.setAttribute('fill', '#ffffff')
+  rect.setAttribute('data-export-background', 'true')
+  svg.insertBefore(rect, svg.firstChild)
+}
+
+function withLightSvgBackground(svgString: string): string {
+  const container = document.createElement('div')
+  container.innerHTML = svgString
+
+  const svg = container.querySelector('svg') as SVGSVGElement | null
+  if (!svg) return svgString
+
+  ensureLightSvgBackground(svg)
+  return getSvgFromContainer(container) ?? svgString
+}
+
+function getCroppedSvgSource(container: HTMLElement): ExportSvgSource | null {
+  const croppedSource = getPngSourceFromContainer(container)
+  if (!croppedSource) return null
+
+  return {
+    ...croppedSource,
+    svgString: withLightSvgBackground(croppedSource.svgString),
+  }
+}
+
+function getExportTheme(theme: MermaidTheme): MermaidTheme {
+  return theme === 'dark' ? DARK_EXPORT_FALLBACK_THEME : theme
+}
+
 export interface MermaidRendererRef {
   exportPng: () => Promise<void>
   exportSvg: () => void
@@ -272,29 +337,78 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       }
     }, [error])
 
-    const handleExportPng = useCallback(async () => {
-      if (!containerRef.current) return
-      const pngSource = getPngSourceFromContainer(containerRef.current)
-      if (!pngSource) return
+    const renderLightExportSource = useCallback(async (): Promise<ExportSvgSource | null> => {
+      if (!source.trim()) return null
+
+      const { config: frontmatterConfig, content } = parseFrontmatter(source)
+      const effectiveLayout = frontmatterConfig?.layout || layout
+      const effectiveTheme = (frontmatterConfig?.theme || theme) as MermaidTheme
+
+      await initMermaid(effectiveLayout, getExportTheme(effectiveTheme))
+
+      const { source: processedSource, animations } = parseExtendedDSL(content)
+      const animationCSS = generateAnimationCSS(animations)
+      const containerId = `mermaid-export-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const { svg } = await renderMermaid(processedSource, containerId)
+
+      const exportContainer = document.createElement('div')
+      exportContainer.innerHTML = svg
+
+      const svgEl = exportContainer.querySelector('svg') as SVGSVGElement | null
+      if (!svgEl) return null
+
+      const leaderStyles = parseAllEdgeStylesFromSource(source)
+      for (const { index, style } of leaderStyles) {
+        applyEdgeStyle(svgEl, index, style)
+      }
+
+      if (animationCSS) {
+        injectStyles(exportContainer, animationCSS)
+      }
+
+      const measureHost = document.createElement('div')
+      measureHost.style.position = 'absolute'
+      measureHost.style.left = '-10000px'
+      measureHost.style.top = '-10000px'
+      measureHost.style.visibility = 'hidden'
+      measureHost.style.pointerEvents = 'none'
+      measureHost.appendChild(exportContainer)
+      document.body.appendChild(measureHost)
+
       try {
+        return getCroppedSvgSource(exportContainer)
+      } finally {
+        measureHost.remove()
+      }
+    }, [layout, source, theme])
+
+    const handleExportPng = useCallback(async () => {
+      try {
+        const exportSource = await renderLightExportSource()
+        if (!exportSource) return
+
         const blob = await exportToPng(
-          pngSource.svgString,
+          exportSource.svgString,
           2,
-          { width: pngSource.width, height: pngSource.height }
+          { width: exportSource.width, height: exportSource.height }
         )
         saveAs(blob, 'diagram.png')
       } catch (err) {
         console.error('Export PNG failed:', err)
       }
-    }, [])
+    }, [renderLightExportSource])
 
-    const handleExportSvg = useCallback(() => {
-      if (!containerRef.current) return
-      const svgString = getSvgFromContainer(containerRef.current)
-      if (!svgString) return
-      const blob = exportToSvg(svgString)
-      saveAs(blob, 'diagram.svg')
-    }, [])
+    const handleExportSvg = useCallback(async () => {
+      try {
+        const exportSource = await renderLightExportSource()
+        if (!exportSource) return
+
+        const blob = exportToSvg(exportSource.svgString)
+        saveAs(blob, 'diagram.svg')
+      } catch (err) {
+        console.error('Export SVG failed:', err)
+      }
+    }, [renderLightExportSource])
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
 
