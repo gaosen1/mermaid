@@ -4,6 +4,7 @@ import { db } from '@/db'
 import { v4 as uuid } from 'uuid'
 import type { Project, Diagram, DiagramConfig } from '@/types'
 import { getDiagramFileExtension, getDiagramTypeFromFilename } from '@/utils/diagram'
+import { dataUrlToBlob, readFileAsDataUrl } from '@/utils/png'
 
 export interface ExportedProject {
   version: string
@@ -14,7 +15,17 @@ export interface ExportedProject {
 export async function exportDiagram(diagram: Diagram): Promise<void> {
   const content = serializeDiagramSource(diagram)
   const extension = getDiagramFileExtension(diagram.type)
-  const mimeType = diagram.type === 'html' ? 'text/html;charset=utf-8' : 'text/plain;charset=utf-8'
+  if (diagram.type === 'png') {
+    saveAs(dataUrlToBlob(content), `${diagram.name}.${extension}`)
+    return
+  }
+
+  const mimeType =
+    diagram.type === 'html'
+      ? 'text/html;charset=utf-8'
+      : diagram.type === 'svg'
+        ? 'image/svg+xml;charset=utf-8'
+        : 'text/plain;charset=utf-8'
   const blob = new Blob([content], { type: mimeType })
   saveAs(blob, `${diagram.name}.${extension}`)
 }
@@ -33,7 +44,8 @@ export async function exportProjectToZip(project: Project): Promise<void> {
 
   for (const diagram of diagrams) {
     const extension = getDiagramFileExtension(diagram.type)
-    zip.file(`${diagram.name}.${extension}`, serializeDiagramSource(diagram))
+    const content = serializeDiagramSource(diagram)
+    zip.file(`${diagram.name}.${extension}`, diagram.type === 'png' ? dataUrlToBlob(content) : content)
   }
 
   const blob = await zip.generateAsync({ type: 'blob' })
@@ -54,14 +66,14 @@ export async function exportProjectToJson(project: Project): Promise<void> {
 }
 
 export async function importDiagram(file: File, projectId: string): Promise<Diagram> {
-  const content = await file.text()
   const type = getDiagramTypeFromFilename(file.name)
 
   if (!type) {
     throw new Error('Unsupported diagram file type')
   }
 
-  const name = file.name.replace(/\.(mmd|html?)$/i, '')
+  const content = type === 'png' ? await readFileAsDataUrl(file) : await file.text()
+  const name = file.name.replace(/\.(mmd|html?|svg|png)$/i, '')
 
   const { config, source } =
     type === 'mermaid'
@@ -188,7 +200,7 @@ function parseFrontmatterFromContent(content: string): { config: DiagramConfig |
 }
 
 function serializeDiagramSource(diagram: Diagram): string {
-  if (diagram.type === 'html') {
+  if (diagram.type === 'html' || diagram.type === 'svg' || diagram.type === 'png') {
     return diagram.source
   }
 

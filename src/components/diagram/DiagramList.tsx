@@ -42,7 +42,9 @@ import {
 import { exportDiagram, importDiagram } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
 import type { Diagram, DiagramType } from '@/types'
-import { getDiagramAcceptTypes, getDiagramTypeLabel } from '@/utils/diagram'
+import { getDiagramAcceptTypes, getDiagramFileExtension, getDiagramTypeLabel } from '@/utils/diagram'
+import { getSvgClipboardFile, isEditablePasteTarget, isSvgSource } from '@/utils/svg'
+import { getPngClipboardFile, hasClipboardFiles, readFileAsDataUrl } from '@/utils/png'
 import {
   DndContext,
   closestCenter,
@@ -153,7 +155,7 @@ function SortableDiagramItem({
             onClick={(e) => { e.stopPropagation(); onExport(diagram) }}
           >
             <Download className="h-4 w-4 mr-2" />
-            导出 .{diagram.type === 'html' ? 'html' : 'mmd'}
+            导出 .{getDiagramFileExtension(diagram.type)}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -219,6 +221,52 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     setNewDiagramName('')
     setNewDiagramType('mermaid')
     setCreateDialogOpen(false)
+  }
+
+  const createSvgDiagramFromSource = async (source: string, name = '粘贴的 SVG') => {
+    const diagram = await createDiagram(projectId, name, 'svg', source)
+    setCurrentDiagram(diagram)
+    onSelectDiagram(diagram)
+  }
+
+  const createPngDiagramFromFile = async (file: File) => {
+    const source = await readFileAsDataUrl(file)
+    const diagram = await createDiagram(projectId, file.name.replace(/\.png$/i, '') || '粘贴的 PNG', 'png', source)
+    setCurrentDiagram(diagram)
+    onSelectDiagram(diagram)
+  }
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented) return
+
+    const editableTarget = isEditablePasteTarget(e.target)
+    const clipboardHasFiles = hasClipboardFiles(e.clipboardData)
+
+    if (editableTarget && !clipboardHasFiles) return
+
+    const pngFile = getPngClipboardFile(e.clipboardData)
+    if (pngFile) {
+      e.preventDefault()
+      e.stopPropagation()
+      await createPngDiagramFromFile(pngFile)
+      return
+    }
+
+    const svgFile = getSvgClipboardFile(e.clipboardData)
+    if (svgFile) {
+      e.preventDefault()
+      e.stopPropagation()
+      const source = await svgFile.text()
+      await createSvgDiagramFromSource(source, svgFile.name.replace(/\.svg$/i, '') || '粘贴的 SVG')
+      return
+    }
+
+    const text = e.clipboardData.getData('text/plain') || e.clipboardData.getData('text/html')
+    if (!isSvgSource(text)) return
+
+    e.preventDefault()
+    e.stopPropagation()
+    await createSvgDiagramFromSource(text)
   }
 
   const handleEdit = async () => {
@@ -289,7 +337,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   }
 
   return (
-    <div className="diagram-list flex flex-col h-full min-h-0">
+    <div className="diagram-list flex flex-col h-full min-h-0" onPaste={handlePaste}>
       <div className="diagram-list-toolbar p-3 border-b flex items-center gap-2">
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
@@ -302,7 +350,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <DialogHeader>
               <DialogTitle className="diagram-list-create-dialog-title">新建图表</DialogTitle>
               <DialogDescription className="diagram-list-create-dialog-description">
-                默认创建 Mermaid 图表，也可以手动切换为 HTML 图表
+                默认创建 Mermaid 图表，也可以手动切换为 HTML、SVG 或 PNG 图表
               </DialogDescription>
             </DialogHeader>
             <div className="diagram-list-create-dialog-body space-y-4 py-4">
@@ -324,6 +372,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   <SelectContent>
                     <SelectItem value="mermaid">Mermaid</SelectItem>
                     <SelectItem value="html">HTML</SelectItem>
+                    <SelectItem value="svg">SVG</SelectItem>
+                    <SelectItem value="png">PNG</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

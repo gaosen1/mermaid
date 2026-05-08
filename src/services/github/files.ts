@@ -53,6 +53,23 @@ export async function putFile(
   message: string,
   sha?: string
 ): Promise<{ sha: string; url: string }> {
+  return putFileBase64(
+    path,
+    btoa(unescape(encodeURIComponent(content))),
+    message,
+    sha
+  )
+}
+
+/**
+ * 创建或更新已编码为 base64 的文件内容
+ */
+export async function putFileBase64(
+  path: string,
+  base64Content: string,
+  message: string,
+  sha?: string
+): Promise<{ sha: string; url: string }> {
   const client = getGitHubClient()
   const config = getGitHubConfig()
 
@@ -69,7 +86,7 @@ export async function putFile(
       repo: config.repo,
       path,
       message,
-      content: btoa(unescape(encodeURIComponent(content))),
+      content: base64Content,
       sha: fileSha,
       branch: config.branch,
     })

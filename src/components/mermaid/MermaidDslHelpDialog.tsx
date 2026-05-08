@@ -27,27 +27,29 @@ const DSL_EXAMPLE = `graph TD
 const LLM_PROMPT = `请为我生成 Mermaid 代码，并遵守以下平台支持的自定义样式规则：
 
 1. 只输出 Mermaid 代码，不要输出 Markdown 解释。
-2. 使用 flowchart/graph 语法时，可以给节点追加平台扩展语法：
+2. 节点文字必须使用双引号包裹，例如 A["节点文本"]。
+3. 节点文字或连线文字需要换行时，使用 <br>，不要使用真实换行符。
+4. 使用 flowchart/graph 语法时，可以给节点追加平台扩展语法：
    NODE_ID@{fill:#HEX;stroke:#HEX;color:#HEX;stroke-width:2px;stroke-style:dotted;animation:pulse}[节点文本]
-3. 节点扩展属性说明：
+5. 节点扩展属性说明：
    - fill：节点背景色，例如 #E1F5EE
    - stroke：节点边框色，例如 #0F6E56
    - color：节点文字颜色，例如 #085041
    - stroke-width：边框宽度，例如 1px、2px、3px
    - stroke-style：支持 normal、dotted、thick
    - animation：支持 pulse、blink、slow、fast、march
-4. 也可以使用 Mermaid 原生 style 指令设置节点或 subgraph：
+6. 也可以使用 Mermaid 原生 style 指令设置节点或 subgraph：
    style NODE_ID fill:#E1F5EE,stroke:#0F6E56,color:#085041,stroke-width:3px
-5. 可以使用 Mermaid 原生 linkStyle 指令设置连线，连线编号从 0 开始：
+7. 可以使用 Mermaid 原生 linkStyle 指令设置连线，连线编号从 0 开始：
    linkStyle 0 stroke:#0F6E56,stroke-width:2px
    linkStyle 1 stroke:#993C1D,stroke-dasharray:5 5,stroke-width:1px
-6. 平台额外支持以下连线动画 CSS：
+8. 平台额外支持以下连线动画 CSS：
    - animation:mermaid-edge-dash 1.5s linear infinite
    - animation:mermaid-edge-dash 0.6s linear infinite
    - animation:mermaid-edge-dash-leader 3s linear infinite
    - animation:mermaid-edge-dash-leader 1.2s linear infinite
-7. 颜色请使用清晰的浅色填充、深色边框和深色文字，保证可读性。
-8. 节点 ID 使用英文、数字或下划线，避免中文 ID；中文放在节点文本里。
+9. 颜色请使用清晰的浅色填充、深色边框和深色文字，保证可读性。
+10. 节点 ID 使用英文、数字或下划线，避免中文 ID；中文放在节点文本里。
 
 请基于我的需求生成一份结构清晰、颜色分组明确、包含必要自定义样式的 Mermaid 图。`
 

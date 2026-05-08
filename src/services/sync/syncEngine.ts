@@ -6,9 +6,10 @@
 import { db } from '@/db'
 import type { Project, Diagram } from '@/types'
 import type { SyncLogEntry, SyncSettings } from '@/types/sync'
-import { getFile, putFile } from '../github/files'
+import { getFile, putFile, putFileBase64 } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
 import { getDiagramFileExtension } from '@/utils/diagram'
+import { getPngDataUrlBase64 } from '@/utils/png'
 import {
   calculateProjectChecksum,
   calculateDiagramChecksum,
@@ -247,13 +248,21 @@ async function handleProjectConflict(
  */
 async function syncDiagram(diagram: Diagram): Promise<void> {
   const checksum = await calculateDiagramChecksum(diagram)
-  const content = formatDiagramContent(diagram)
+  const remotePath = getDiagramRemotePath(diagram)
 
-  await putFile(
-    getDiagramRemotePath(diagram),
-    content,
-    `Sync diagram: ${diagram.name}`
-  )
+  if (diagram.type === 'png') {
+    await putFileBase64(
+      remotePath,
+      getPngDataUrlBase64(diagram.source),
+      `Sync diagram: ${diagram.name}`
+    )
+  } else {
+    await putFile(
+      remotePath,
+      formatDiagramContent(diagram),
+      `Sync diagram: ${diagram.name}`
+    )
+  }
 
   await db.diagrams.update(diagram.id, {
     syncStatus: 'synced',
@@ -268,7 +277,7 @@ async function syncDiagram(diagram: Diagram): Promise<void> {
  * 格式化图表内容
  */
 function formatDiagramContent(diagram: Diagram): string {
-  if (diagram.type === 'html') {
+  if (diagram.type === 'html' || diagram.type === 'svg' || diagram.type === 'png') {
     return diagram.source
   }
 

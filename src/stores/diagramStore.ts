@@ -93,6 +93,32 @@ const DEFAULT_HTML_SOURCE = `<!DOCTYPE html>
 </body>
 </html>`
 
+const DEFAULT_SVG_SOURCE = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 360">
+  <rect width="720" height="360" rx="18" fill="#ffffff" />
+  <rect x="32" y="32" width="656" height="296" rx="14" fill="#f7f5ef" stroke="#d7d0bf" />
+  <text x="360" y="156" text-anchor="middle" font-family="SF Mono, Consolas, monospace" font-size="28" font-weight="700" fill="#1f1e1a">
+    SVG 图表
+  </text>
+  <text x="360" y="204" text-anchor="middle" font-family="SF Mono, Consolas, monospace" font-size="15" fill="#5f5e5a">
+    在这里粘贴或编辑完整 SVG 源码
+  </text>
+</svg>`
+
+const DEFAULT_PNG_SOURCE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII='
+
+function getDefaultSource(type: DiagramType): string {
+  switch (type) {
+    case 'html':
+      return DEFAULT_HTML_SOURCE
+    case 'svg':
+      return DEFAULT_SVG_SOURCE
+    case 'png':
+      return DEFAULT_PNG_SOURCE
+    default:
+      return DEFAULT_SOURCE
+  }
+}
+
 export const useDiagramStore = create<DiagramState>((set, get) => ({
   diagrams: [],
   currentDiagram: null,
@@ -134,7 +160,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       projectId,
       name,
       type,
-      source: source || (type === 'html' ? DEFAULT_HTML_SOURCE : DEFAULT_SOURCE),
+      source: source || getDefaultSource(type),
       config: type === 'mermaid' ? config : undefined,
       order: maxOrder + 1,
       createdAt: now,

@@ -4,9 +4,13 @@ import { useDiagramStore } from '@/stores/diagramStore'
 import { DiagramList } from '@/components/diagram/DiagramList'
 import { DiagramEditor } from '@/components/mermaid/DiagramEditor'
 import { HtmlDiagramEditor } from '@/components/html/HtmlDiagramEditor'
+import { SvgDiagramEditor } from '@/components/svg/SvgDiagramEditor'
+import { PngDiagramViewer } from '@/components/png/PngDiagramViewer'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, PanelLeftClose, PanelLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Diagram } from '@/types'
+import { getSvgClipboardFile, isEditablePasteTarget, isSvgSource } from '@/utils/svg'
+import { getPngClipboardFile, hasClipboardFiles, readFileAsDataUrl } from '@/utils/png'
 
 const STORAGE_KEY = 'project-sidebar-state'
 const DEFAULT_WIDTH = 280
@@ -48,7 +52,7 @@ interface ProjectPageProps {
 
 export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSelectDiagram }: ProjectPageProps) {
   const { projects, currentProject, loading: projectLoading, setCurrentProject } = useProjectStore()
-  const { diagrams, loadDiagramsByProject, currentDiagram, setCurrentDiagram } = useDiagramStore()
+  const { diagrams, loadDiagramsByProject, currentDiagram, setCurrentDiagram, createDiagram } = useDiagramStore()
 
   const [sidebarState, setSidebarState] = useState<SidebarState>(loadSidebarState)
   const [isResizing, setIsResizing] = useState(false)
@@ -72,6 +76,43 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
   }, [sidebarState])
 
   const handleSelectDiagram = (diagram: Diagram) => {
+    setCurrentDiagram(diagram)
+    onSelectDiagram?.(diagram.id)
+  }
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented) return
+
+    const editableTarget = isEditablePasteTarget(e.target)
+    const clipboardHasFiles = hasClipboardFiles(e.clipboardData)
+
+    if (editableTarget && !clipboardHasFiles) return
+
+    const pngFile = getPngClipboardFile(e.clipboardData)
+    if (pngFile) {
+      e.preventDefault()
+      const source = await readFileAsDataUrl(pngFile)
+      const diagram = await createDiagram(projectId, pngFile.name.replace(/\.png$/i, '') || '粘贴的 PNG', 'png', source)
+      setCurrentDiagram(diagram)
+      onSelectDiagram?.(diagram.id)
+      return
+    }
+
+    const svgFile = getSvgClipboardFile(e.clipboardData)
+    if (svgFile) {
+      e.preventDefault()
+      const source = await svgFile.text()
+      const diagram = await createDiagram(projectId, svgFile.name.replace(/\.svg$/i, '') || '粘贴的 SVG', 'svg', source)
+      setCurrentDiagram(diagram)
+      onSelectDiagram?.(diagram.id)
+      return
+    }
+
+    const text = e.clipboardData.getData('text/plain') || e.clipboardData.getData('text/html')
+    if (!isSvgSource(text)) return
+
+    e.preventDefault()
+    const diagram = await createDiagram(projectId, '粘贴的 SVG', 'svg', text)
     setCurrentDiagram(diagram)
     onSelectDiagram?.(diagram.id)
   }
@@ -148,7 +189,7 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
   }
 
   return (
-    <div className="project-page relative h-full w-full overflow-hidden">
+    <div className="project-page relative h-full w-full overflow-hidden" onPasteCapture={handlePaste}>
       {/* 全屏画布 - 渲染器 */}
       {currentDiagram ? (
         currentDiagram.type === 'html' ? (
@@ -157,6 +198,14 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
             sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
             sidebarAnimating={isAnimating}
           />
+        ) : currentDiagram.type === 'svg' ? (
+          <SvgDiagramEditor
+            diagramId={currentDiagram.id}
+            sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
+            sidebarAnimating={isAnimating}
+          />
+        ) : currentDiagram.type === 'png' ? (
+          <PngDiagramViewer diagramId={currentDiagram.id} />
         ) : (
           <DiagramEditor
             diagramId={currentDiagram.id}
