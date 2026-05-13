@@ -24,7 +24,6 @@ export function MermaidThemeTestPage() {
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'loose',
-      theme: 'dark',
       flowchart: {
         curve: 'linear',
         nodeSpacing: 30,
@@ -142,7 +141,21 @@ export function MermaidThemeTestPage() {
     const renderDiagrams = async () => {
       if (!containerRef.current || !isMounted) return
 
+      const isDarkMode = document.documentElement.classList.contains('dark')
+
       containerRef.current.innerHTML = ''
+
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: 'loose',
+        theme: isDarkMode ? 'dark' : 'base',
+        flowchart: {
+          curve: 'linear',
+          nodeSpacing: 30,
+          rankSpacing: 50,
+          wrappingWidth: 200,
+        },
+      })
 
       for (let i = 0; i < testDiagrams.length; i++) {
         if (!isMounted) break
@@ -180,8 +193,17 @@ export function MermaidThemeTestPage() {
 
     renderDiagrams()
 
+    const observer = new MutationObserver(() => {
+      renderDiagrams()
+    })
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
+
     return () => {
       isMounted = false
+      observer.disconnect()
     }
   }, [])
 
@@ -191,13 +213,13 @@ export function MermaidThemeTestPage() {
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">Mermaid Dark 主题测试</h1>
           <p className="text-muted-foreground">
-            所有图表都使用硬编码的 <code className="px-1 py-0.5 bg-muted rounded">theme: 'dark'</code> 配置
+            所有图表都跟随当前网站主题在 <code className="px-1 py-0.5 bg-muted rounded">base</code> / <code className="px-1 py-0.5 bg-muted rounded">dark</code> 间切换
           </p>
           <div className="mt-4 p-4 bg-muted rounded-lg">
             <p className="text-sm font-mono">
               mermaid.initialize({'{'}
               <br />
-              &nbsp;&nbsp;theme: 'dark',
+              &nbsp;&nbsp;theme: document.documentElement.classList.contains('dark') ? 'dark' : 'base',
               <br />
               &nbsp;&nbsp;securityLevel: 'loose',
               <br />

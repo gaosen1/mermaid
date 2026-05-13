@@ -163,12 +163,16 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
       setEditorState({
         source: currentDiagram.source,
         layout: currentDiagram.config?.layout || settings.defaultLayout,
-        theme: currentDiagram.config?.theme || settings.renderTheme,
+        theme: settings.renderTheme,
         hasChanges: false,
       })
       loadSnapshots(currentDiagram.id)
     }
   }, [currentDiagram, settings.defaultLayout, settings.renderTheme, loadSnapshots])
+
+  useEffect(() => {
+    setEditorState((prev) => ({ ...prev, theme: settings.renderTheme }))
+  }, [settings.renderTheme])
 
   useEffect(() => {
     saveEditorState(panelState)
@@ -198,11 +202,11 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
     await updateDiagram(diagramId, {
       source,
-      config: { layout, theme },
+      config: { layout },
     })
 
     setEditorState(prev => ({ ...prev, hasChanges: false }))
-  }, [currentDiagram, diagramId, source, layout, theme, updateDiagram, createSnapshot])
+  }, [currentDiagram, diagramId, source, layout, updateDiagram, createSnapshot])
 
   // 更新 handleSaveRef
   useEffect(() => {
@@ -422,7 +426,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         ref={rendererRef}
         source={source}
         layout={layout}
-        theme={theme}
+        theme={isDarkMode ? 'dark' : theme}
         className="absolute inset-0"
         showControls={true}
         edgeSelectionEnabled={true}

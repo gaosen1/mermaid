@@ -230,7 +230,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         try {
           const { config: frontmatterConfig, content } = parseFrontmatter(source)
           const effectiveLayout = frontmatterConfig?.layout || layout
-          const effectiveTheme = frontmatterConfig?.theme || theme
+          const effectiveTheme = theme
 
           await initMermaid(effectiveLayout, effectiveTheme)
 
@@ -342,7 +342,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
       const { config: frontmatterConfig, content } = parseFrontmatter(source)
       const effectiveLayout = frontmatterConfig?.layout || layout
-      const effectiveTheme = (frontmatterConfig?.theme || theme) as MermaidTheme
+      const effectiveTheme = theme as MermaidTheme
 
       await initMermaid(effectiveLayout, getExportTheme(effectiveTheme))
 
