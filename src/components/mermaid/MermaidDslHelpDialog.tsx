@@ -64,7 +64,7 @@ export function MermaidDslHelpDialog({ open, onOpenChange }: MermaidDslHelpDialo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="mermaid-dsl-help-dialog !max-w-[min(1120px,calc(100vw-2rem))] max-h-[88vh] overflow-hidden p-0 gap-0">
+      <DialogContent className="mermaid-dsl-help-dialog max-w-[min(1120px,calc(100vw-2rem))]! max-h-[88vh] overflow-hidden p-0 gap-0">
         <DialogHeader className="mermaid-dsl-help-header px-5 pt-5 pb-3 border-b min-w-0">
           <DialogTitle className="mermaid-dsl-help-title flex items-center gap-2 text-base min-w-0 pr-8">
             <BookOpenText className="mermaid-dsl-help-title-icon h-4 w-4 shrink-0" />
@@ -146,7 +146,7 @@ export function MermaidDslHelpDialog({ open, onOpenChange }: MermaidDslHelpDialo
                   复制提示词
                 </Button>
               </div>
-              <pre className="mermaid-dsl-help-code-block mermaid-dsl-help-prompt-code max-h-[54vh] overflow-auto rounded-md border bg-muted/40 p-3 text-xs leading-5 whitespace-pre-wrap break-words min-w-0">
+              <pre className="mermaid-dsl-help-code-block mermaid-dsl-help-prompt-code max-h-[54vh] overflow-auto rounded-md border bg-muted/40 p-3 text-xs leading-5 whitespace-pre-wrap wrap-break-word min-w-0">
                 <code>{LLM_PROMPT}</code>
               </pre>
             </TabsContent>

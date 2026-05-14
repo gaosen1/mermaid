@@ -473,7 +473,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         {/* 工具栏 */}
         <div className="flex items-center gap-2 p-2 border-b shrink-0 flex-wrap">
           <Select value={layout} onValueChange={(v) => setLayout(v as LayoutType)}>
-            <SelectTrigger className="w-[100px] h-8 text-xs">
+            <SelectTrigger className="w-[25] h-8 text-xs">
               <SelectValue placeholder="布局" />
             </SelectTrigger>
             <SelectContent>
@@ -484,7 +484,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
           </Select>
 
           <Select value={theme} onValueChange={(v) => setTheme(v as 'default' | 'dark' | 'forest' | 'neutral' | 'base')}>
-            <SelectTrigger className="w-[80px] h-8 text-xs">
+            <SelectTrigger className="w-20 h-8 text-xs">
               <SelectValue placeholder="主题" />
             </SelectTrigger>
             <SelectContent>
