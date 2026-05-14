@@ -102,11 +102,15 @@ export function CodeEditor({
     darkMode ? darkThemeOverride : [],
   ].flat()
 
+  const handleChange = (nextValue: string) => {
+    onChange(nextValue.replace(/\\n/g, '<br>'))
+  }
+
   return (
     <div className={cn('border rounded-lg overflow-hidden', className)}>
       <CodeMirror
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         placeholder={placeholder}
         readOnly={readOnly}
         extensions={extensions}
