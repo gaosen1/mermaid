@@ -13,13 +13,14 @@ interface SvgRendererProps {
   source: string
   className?: string
   fileName?: string
+  diagramId?: string
 }
 
 export const SvgRenderer = forwardRef<SvgRendererRef, SvgRendererProps>(
-  ({ source, className = '', fileName = 'diagram' }, ref) => {
+  ({ source, className = '', fileName = 'diagram', diagramId }, ref) => {
     const innerRef = useRef<HTMLDivElement>(null)
     const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView } =
-      useZoomPan()
+      useZoomPan(diagramId)
 
     const renderState = useMemo((): { svg: string; error: string | null } => {
       if (!source.trim()) return { svg: '', error: null }

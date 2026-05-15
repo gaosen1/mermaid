@@ -13,7 +13,7 @@ interface PngDiagramViewerProps {
 export function PngDiagramViewer({ diagramId }: PngDiagramViewerProps) {
   const { currentDiagram } = useDiagramStore()
   const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView } =
-    useZoomPan()
+    useZoomPan(diagramId)
 
   const handleImageLoad = useCallback(
     (e: React.SyntheticEvent<HTMLImageElement>) => {

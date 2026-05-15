@@ -182,6 +182,7 @@ export function SvgDiagramEditor({
         source={source}
         className="absolute inset-0"
         fileName={currentDiagram.name}
+        diagramId={diagramId}
       />
 
       <div

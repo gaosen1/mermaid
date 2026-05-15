@@ -431,6 +431,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         showControls={true}
         edgeSelectionEnabled={true}
         nodeSelectionEnabled={true}
+        diagramId={diagramId}
         onEdgeSelect={handleEdgeSelect}
         onNodeSelect={handleNodeSelect}
         onNodeDoubleClick={handleNodeDoubleClick}

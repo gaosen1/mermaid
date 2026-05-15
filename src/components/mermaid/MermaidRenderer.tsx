@@ -112,6 +112,7 @@ interface MermaidRendererProps {
   showControls?: boolean
   edgeSelectionEnabled?: boolean
   nodeSelectionEnabled?: boolean
+  diagramId?: string
   onRenderSuccess?: () => void
   onRenderError?: (error: string) => void
   onRenderStart?: () => void
@@ -130,6 +131,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       showControls = true,
       edgeSelectionEnabled = false,
       nodeSelectionEnabled = false,
+      diagramId,
       onRenderSuccess,
       onRenderError,
       onRenderStart,
@@ -163,7 +165,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       handleMouseUp,
       resetView,
       fitToContainer,
-    } = useViewTransform({ wrapperRef, containerRef })
+    } = useViewTransform({ wrapperRef, containerRef, diagramId })
 
     // 边缘选中
     const {
