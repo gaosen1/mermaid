@@ -44,7 +44,7 @@ import { SyncStatusBadge } from '@/components/sync'
 import type { Diagram, DiagramType } from '@/types'
 import { getDiagramAcceptTypes, getDiagramFileExtension, getDiagramTypeLabel } from '@/utils/diagram'
 import { getSvgClipboardFile, isEditablePasteTarget, isSvgSource } from '@/utils/svg'
-import { getPngClipboardFile, hasClipboardFiles, readFileAsDataUrl } from '@/utils/png'
+import { getImageClipboardFile, hasClipboardFiles, readFileAsDataUrl, getImageTypeFromDataUrl } from '@/utils/png'
 import {
   DndContext,
   closestCenter,
@@ -229,9 +229,12 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     onSelectDiagram(diagram)
   }
 
-  const createPngDiagramFromFile = async (file: File) => {
+  const createImageDiagramFromFile = async (file: File) => {
     const source = await readFileAsDataUrl(file)
-    const diagram = await createDiagram(projectId, file.name.replace(/\.png$/i, '') || '粘贴的 PNG', 'png', source)
+    const type = getImageTypeFromDataUrl(source) ?? 'png'
+    const baseName = file.name.replace(/\.(png|jpe?g|webp)$/i, '')
+    const name = baseName || `粘贴的 ${type.toUpperCase()}`
+    const diagram = await createDiagram(projectId, name, type, source)
     setCurrentDiagram(diagram)
     onSelectDiagram(diagram)
   }
@@ -244,11 +247,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
     if (editableTarget && !clipboardHasFiles) return
 
-    const pngFile = getPngClipboardFile(e.clipboardData)
-    if (pngFile) {
+    const imageFile = getImageClipboardFile(e.clipboardData)
+    if (imageFile) {
       e.preventDefault()
       e.stopPropagation()
-      await createPngDiagramFromFile(pngFile)
+      await createImageDiagramFromFile(imageFile)
       return
     }
 
@@ -350,7 +353,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <DialogHeader>
               <DialogTitle className="diagram-list-create-dialog-title">新建图表</DialogTitle>
               <DialogDescription className="diagram-list-create-dialog-description">
-                默认创建 Mermaid 图表，也可以手动切换为 HTML、SVG 或 PNG 图表
+                默认创建 Mermaid 图表，也可以手动切换为 HTML、SVG 或图片格式
               </DialogDescription>
             </DialogHeader>
             <div className="diagram-list-create-dialog-body space-y-4 py-4">
@@ -374,6 +377,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                     <SelectItem value="html">HTML</SelectItem>
                     <SelectItem value="svg">SVG</SelectItem>
                     <SelectItem value="png">PNG</SelectItem>
+                    <SelectItem value="jpg">JPG</SelectItem>
+                    <SelectItem value="webp">WebP</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

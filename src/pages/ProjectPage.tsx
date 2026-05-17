@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowLeft, PanelLeftClose, PanelLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Diagram } from '@/types'
 import { getSvgClipboardFile, isEditablePasteTarget, isSvgSource } from '@/utils/svg'
-import { getPngClipboardFile, hasClipboardFiles, readFileAsDataUrl } from '@/utils/png'
+import { getImageClipboardFile, hasClipboardFiles, readFileAsDataUrl, getImageTypeFromDataUrl } from '@/utils/png'
 
 const STORAGE_KEY = 'project-sidebar-state'
 const DEFAULT_WIDTH = 280
@@ -88,11 +88,14 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
 
     if (editableTarget && !clipboardHasFiles) return
 
-    const pngFile = getPngClipboardFile(e.clipboardData)
-    if (pngFile) {
+    const imageFile = getImageClipboardFile(e.clipboardData)
+    if (imageFile) {
       e.preventDefault()
-      const source = await readFileAsDataUrl(pngFile)
-      const diagram = await createDiagram(projectId, pngFile.name.replace(/\.png$/i, '') || '粘贴的 PNG', 'png', source)
+      const source = await readFileAsDataUrl(imageFile)
+      const type = getImageTypeFromDataUrl(source) ?? 'png'
+      const baseName = imageFile.name.replace(/\.(png|jpe?g|webp)$/i, '')
+      const name = baseName || `粘贴的 ${type.toUpperCase()}`
+      const diagram = await createDiagram(projectId, name, type, source)
       setCurrentDiagram(diagram)
       onSelectDiagram?.(diagram.id)
       return
@@ -204,7 +207,7 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
             sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
             sidebarAnimating={isAnimating}
           />
-        ) : currentDiagram.type === 'png' ? (
+        ) : currentDiagram.type === 'png' || currentDiagram.type === 'jpg' || currentDiagram.type === 'webp' ? (
           <PngDiagramViewer diagramId={currentDiagram.id} />
         ) : (
           <DiagramEditor

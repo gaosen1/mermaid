@@ -4,7 +4,7 @@ import { db } from '@/db'
 import { v4 as uuid } from 'uuid'
 import type { Project, Diagram, DiagramConfig } from '@/types'
 import { getDiagramFileExtension, getDiagramTypeFromFilename } from '@/utils/diagram'
-import { dataUrlToBlob, readFileAsDataUrl } from '@/utils/png'
+import { dataUrlToBlob, readFileAsDataUrl, isImageType } from '@/utils/png'
 
 export interface ExportedProject {
   version: string
@@ -15,7 +15,7 @@ export interface ExportedProject {
 export async function exportDiagram(diagram: Diagram): Promise<void> {
   const content = serializeDiagramSource(diagram)
   const extension = getDiagramFileExtension(diagram.type)
-  if (diagram.type === 'png') {
+  if (isImageType(diagram.type)) {
     saveAs(dataUrlToBlob(content), `${diagram.name}.${extension}`)
     return
   }
@@ -45,7 +45,7 @@ export async function exportProjectToZip(project: Project): Promise<void> {
   for (const diagram of diagrams) {
     const extension = getDiagramFileExtension(diagram.type)
     const content = serializeDiagramSource(diagram)
-    zip.file(`${diagram.name}.${extension}`, diagram.type === 'png' ? dataUrlToBlob(content) : content)
+    zip.file(`${diagram.name}.${extension}`, isImageType(diagram.type) ? dataUrlToBlob(content) : content)
   }
 
   const blob = await zip.generateAsync({ type: 'blob' })
@@ -72,8 +72,8 @@ export async function importDiagram(file: File, projectId: string): Promise<Diag
     throw new Error('Unsupported diagram file type')
   }
 
-  const content = type === 'png' ? await readFileAsDataUrl(file) : await file.text()
-  const name = file.name.replace(/\.(mmd|html?|svg|png)$/i, '')
+  const content = isImageType(type) ? await readFileAsDataUrl(file) : await file.text()
+  const name = file.name.replace(/\.(mmd|html?|svg|png|jpe?g|webp)$/i, '')
 
   const { config, source } =
     type === 'mermaid'
@@ -200,7 +200,7 @@ function parseFrontmatterFromContent(content: string): { config: DiagramConfig |
 }
 
 function serializeDiagramSource(diagram: Diagram): string {
-  if (diagram.type === 'html' || diagram.type === 'svg' || diagram.type === 'png') {
+  if (diagram.type === 'html' || diagram.type === 'svg' || isImageType(diagram.type)) {
     return diagram.source
   }
 

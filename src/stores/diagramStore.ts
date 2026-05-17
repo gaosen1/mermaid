@@ -114,6 +114,9 @@ function getDefaultSource(type: DiagramType): string {
       return DEFAULT_SVG_SOURCE
     case 'png':
       return DEFAULT_PNG_SOURCE
+    case 'jpg':
+    case 'webp':
+      return ''
     default:
       return DEFAULT_SOURCE
   }
