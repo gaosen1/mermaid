@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Label } from '@/components/ui/label'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Select,
@@ -120,7 +121,12 @@ function SortableDiagramItem({
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
         <FileCode2 className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
-        <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
+          </TooltipTrigger>
+          <TooltipContent side="right">{diagram.name}</TooltipContent>
+        </Tooltip>
         <Badge variant="outline" className="diagram-list-item-type text-[10px] uppercase tracking-wide">
           {getDiagramTypeLabel(diagram.type)}
         </Badge>
