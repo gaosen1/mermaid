@@ -8,7 +8,7 @@ import type { Project, Diagram, DiagramFolder } from '@/types'
 import type { SyncLogEntry, SyncSettings } from '@/types/sync'
 import { getFile, putFile, putFileBase64, listDirectory } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
-import { getDiagramFileExtension } from '@/utils/diagram'
+import { getDiagramFileExtension, getDiagramTypeFromFilename } from '@/utils/diagram'
 import { getPngDataUrlBase64 } from '@/utils/png'
 import {
   calculateProjectChecksum,
@@ -116,7 +116,7 @@ export async function syncAll(
 
     // 5. 拉取远端新增的数据
     onProgress?.({ total: 0, completed: 0, phase: 'pulling' })
-    const pullResult = await pullRemoteChanges(localProjects, remoteProjects)
+    const pullResult = await pullRemoteChanges(localProjects, localDiagrams, remoteProjects)
     result.pulled = pullResult.pulled
     result.conflicts += pullResult.conflicts
 
@@ -125,13 +125,11 @@ export async function syncAll(
 
     onProgress?.({ total: 0, completed: 0, phase: 'idle' })
   } catch (error) {
-    result.success = false
     result.errors.push(`Sync failed: ${error}`)
   } finally {
     isSyncing = false
   }
 
-  // 只要有任何错误，同步结果就标记为失败
   if (result.errors.length > 0) {
     result.success = false
   }
@@ -427,13 +425,13 @@ function getDiagramRemotePath(diagram: Diagram): string {
  */
 async function pullRemoteChanges(
   localProjects: Project[],
+  localDiagrams: Diagram[],
   remoteProjects: Map<string, Project>
 ): Promise<{ pulled: number; conflicts: number }> {
   let pulled = 0
   const conflicts = 0
 
   const localProjectIds = new Set(localProjects.map((p) => p.id))
-  const localDiagrams = await db.diagrams.toArray()
   const localDiagramIds = new Set(localDiagrams.map((d) => d.id))
   const localFolders = await db.folders.toArray()
   const localFolderIds = new Set(localFolders.map((f) => f.id))
@@ -494,84 +492,116 @@ async function pullRemoteFolders(projectId: string, localFolderIds: Set<string>)
  * 拉取单个项目下远端有但本地缺失的图表
  */
 async function pullRemoteDiagrams(projectId: string, localDiagramIds: Set<string>): Promise<number> {
-  let pulled = 0
-  const dirPath = `data/projects/${projectId}/diagrams`
+  let count = 0
+  const diagramsPath = `data/projects/${projectId}/diagrams`
 
   try {
-    const remoteFiles = await listDirectory(dirPath)
+    const files = await listDirectory(diagramsPath)
 
-    for (const file of remoteFiles) {
-      const fileName = file.path.split('/').pop() || ''
+    for (const fileInfo of files) {
+      // 从文件名提取 diagram id（去掉扩展名）
+      const fileName = fileInfo.path.split('/').pop() || ''
       const diagramId = fileName.replace(/\.[^.]+$/, '')
 
-      if (!diagramId || localDiagramIds.has(diagramId)) continue
-
-      const fileInfo = await getFile(file.path)
-      if (!fileInfo?.content) continue
+      if (localDiagramIds.has(diagramId)) {
+        continue
+      }
 
       try {
-        const parsed = parseDiagramFile(fileInfo.content, diagramId, projectId)
-        await db.diagrams.add({
-          ...parsed,
-          syncStatus: 'synced',
-          lastSyncTime: Date.now(),
-        })
-        localDiagramIds.add(diagramId)
-        pulled++
+        const file = await getFile(fileInfo.path)
+        if (!file?.content) continue
+
+        const diagramType = getDiagramTypeFromFilename(fileInfo.path)
+        const diagram = parseDiagramFile(file.content, projectId, diagramType || 'mermaid')
+        if (diagram) {
+          await db.diagrams.add({
+            ...diagram,
+            syncStatus: 'synced',
+            lastSyncTime: Date.now(),
+          })
+          localDiagramIds.add(diagram.id)
+          count++
+        }
       } catch {
-        // 解析失败跳过该图表
+        // 跳过无法解析的文件
       }
     }
   } catch {
-    // 目录不存在或读取失败，忽略
+    // 目录不存在或无法访问
   }
 
-  return pulled
+  return count
 }
 
 /**
- * 解析远端图表文件内容
+ * 解析图表文件内容
  */
-function parseDiagramFile(content: string, diagramId: string, projectId: string): Omit<Diagram, 'syncStatus' | 'lastSyncTime'> {
+function parseDiagramFile(
+  content: string,
+  projectId: string,
+  type: Diagram['type']
+): Omit<Diagram, 'syncStatus' | 'lastSyncTime'> | null {
+  if (type === 'html' || type === 'svg' || type === 'png') {
+    return null
+  }
+
+  // 解析 YAML frontmatter
   const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
-  if (!frontmatterMatch) {
+  if (frontmatterMatch) {
+    const meta = parseFrontmatter(frontmatterMatch[1])
+    const source = frontmatterMatch[2]
+
     return {
-      id: diagramId,
-      projectId,
-      name: diagramId,
-      source: content,
-      type: 'mermaid',
-      config: {},
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      id: meta.id || crypto.randomUUID(),
+      projectId: meta.projectId || projectId,
+      name: meta.name || 'Untitled',
+      type,
+      source,
+      config: meta.config ? JSON.parse(meta.config) : undefined,
+      createdAt: meta.createdAt ? new Date(meta.createdAt).getTime() : Date.now(),
+      updatedAt: meta.updatedAt ? new Date(meta.updatedAt).getTime() : Date.now(),
     }
   }
 
-  const metaBlock = frontmatterMatch[1]
-  const source = frontmatterMatch[2]
-
-  const idMatch = metaBlock.match(/id:\s*(.+)/)
-  const nameMatch = metaBlock.match(/name:\s*(.+)/)
-  const folderIdMatch = metaBlock.match(/folderId:\s*(.+)/)
-  const orderMatch = metaBlock.match(/order:\s*(.+)/)
-  const createdAtMatch = metaBlock.match(/createdAt:\s*(.+)/)
-  const updatedAtMatch = metaBlock.match(/updatedAt:\s*(.+)/)
-  const configMatch = metaBlock.match(/config:\s*(.+)/)
-
-  const folderIdRaw = folderIdMatch?.[1]?.trim()
-
+  // 无 frontmatter，作为纯 mermaid 源码
   return {
-    id: idMatch?.[1]?.trim() || diagramId,
+    id: crypto.randomUUID(),
     projectId,
-    folderId: !folderIdRaw || folderIdRaw === 'null' ? null : folderIdRaw,
-    name: nameMatch?.[1]?.trim() || diagramId,
-    source: source.trim(),
-    type: 'mermaid',
-    config: configMatch?.[1] ? JSON.parse(configMatch[1].trim()) : {},
-    order: orderMatch?.[1] ? Number(orderMatch[1].trim()) : undefined,
-    createdAt: createdAtMatch?.[1] ? new Date(createdAtMatch[1].trim()).getTime() : Date.now(),
-    updatedAt: updatedAtMatch?.[1] ? new Date(updatedAtMatch[1].trim()).getTime() : Date.now(),
+    name: 'Untitled',
+    type,
+    source: content,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
   }
+}
+
+/**
+ * 解析 frontmatter 中的 meta 字段
+ */
+function parseFrontmatter(raw: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  const lines = raw.split('\n')
+
+  let inMeta = false
+  for (const line of lines) {
+    if (line.trim() === 'meta:') {
+      inMeta = true
+      continue
+    }
+    if (line.startsWith('config:')) {
+      inMeta = false
+      result.config = line.replace('config:', '').trim()
+      continue
+    }
+    if (inMeta && line.startsWith('  ')) {
+      const match = line.match(/^\s+(\w+):\s*(.*)$/)
+      if (match) {
+        result[match[1]] = match[2]
+      }
+    }
+  }
+
+  return result
 }
 
 /**

@@ -25,15 +25,17 @@ export async function getFile(path: string): Promise<GitHubFileInfo | null> {
       throw new GitHubFileError(`Unexpected content type: ${data.type}`)
     }
 
+    let content: string | undefined
+    if (data.content) {
+      const binary = atob(data.content.replace(/\n/g, ''))
+      const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
+      content = new TextDecoder().decode(bytes)
+    }
+
     return {
       path: data.path,
       sha: data.sha,
-      content: (() => {
-        if (!data.content) return undefined
-        const binary = atob(data.content.replace(/\n/g, ''))
-        const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
-        return new TextDecoder().decode(bytes)
-      })(),
+      content,
       size: data.size,
       url: data.html_url || '',
     }
@@ -100,10 +102,13 @@ export async function putFileBase64(
       const existing = await getFile(path)
       fileSha = existing?.sha
     }
+
+
     return await attemptPut(fileSha)
   } catch (error) {
     const err = error as { status?: number }
     if (err.status === 409) {
+      // SHA 过期，重新获取最新 SHA 后重试一次
       const existing = await getFile(path)
       return await attemptPut(existing?.sha)
     }
