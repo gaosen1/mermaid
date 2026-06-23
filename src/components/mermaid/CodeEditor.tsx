@@ -1,6 +1,7 @@
 import CodeMirror from '@uiw/react-codemirror'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { EditorView } from '@codemirror/view'
+import { markdown } from '@codemirror/lang-markdown'
 import { cn } from '@/lib/utils'
 import { mermaid } from 'codemirror-lang-mermaid'
 
@@ -11,7 +12,7 @@ interface CodeEditorProps {
   placeholder?: string
   readOnly?: boolean
   darkMode?: boolean
-  language?: 'mermaid' | 'plain'
+  language?: 'mermaid' | 'markdown' | 'plain'
 }
 
 const baseTheme = EditorView.theme({
@@ -96,7 +97,7 @@ export function CodeEditor({
   language = 'mermaid',
 }: CodeEditorProps) {
   const extensions = [
-    language === 'mermaid' ? mermaid() : [],
+    language === 'mermaid' ? mermaid() : language === 'markdown' ? markdown() : [],
     baseTheme,
     darkMode ? oneDark : lightTheme,
     darkMode ? darkThemeOverride : [],

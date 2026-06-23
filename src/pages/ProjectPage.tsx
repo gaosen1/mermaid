@@ -7,6 +7,7 @@ import { DiagramEditor } from '@/components/mermaid/DiagramEditor'
 import { HtmlDiagramEditor } from '@/components/html/HtmlDiagramEditor'
 import { SvgDiagramEditor } from '@/components/svg/SvgDiagramEditor'
 import { PngDiagramViewer } from '@/components/png/PngDiagramViewer'
+import { MarkdownTableEditor } from '@/components/markdown/MarkdownTableEditor'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, PanelLeftClose, PanelLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Diagram } from '@/types'
@@ -206,6 +207,12 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
           />
         ) : currentDiagram.type === 'svg' ? (
           <SvgDiagramEditor
+            diagramId={currentDiagram.id}
+            sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
+            sidebarAnimating={isAnimating}
+          />
+        ) : currentDiagram.type === 'markdown' ? (
+          <MarkdownTableEditor
             diagramId={currentDiagram.id}
             sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
             sidebarAnimating={isAnimating}

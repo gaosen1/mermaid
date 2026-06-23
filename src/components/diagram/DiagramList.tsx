@@ -407,7 +407,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     moveDiagramToFolder,
   } = useDiagramStore()
 
-  const { folders, loadFoldersByProject, createFolder, updateFolder, deleteFolder } = useFolderStore()
+  const { folders, createFolder, updateFolder, deleteFolder } = useFolderStore()
   const { isAuthenticated } = useSyncStore()
 
   // Dialog state
@@ -670,7 +670,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const toggleFolder = (id: string) => {
     setCollapsedFolders((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }
@@ -708,7 +712,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               <DialogDescription>
                 {createDiagramFolderId
                   ? `在文件夹「${folders.find(f => f.id === createDiagramFolderId)?.name ?? ''}」中创建`
-                  : '默认创建 Mermaid 图表，也可以手动切换为 HTML、SVG 或图片格式'}
+                  : '默认创建 Mermaid 图表，也可以手动切换为 HTML、SVG、Markdown 或图片格式'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -724,6 +728,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                     <SelectItem value="mermaid">Mermaid</SelectItem>
                     <SelectItem value="html">HTML</SelectItem>
                     <SelectItem value="svg">SVG</SelectItem>
+                    <SelectItem value="markdown">Markdown 表格</SelectItem>
                     <SelectItem value="png">PNG</SelectItem>
                     <SelectItem value="jpg">JPG</SelectItem>
                     <SelectItem value="webp">WebP</SelectItem>
