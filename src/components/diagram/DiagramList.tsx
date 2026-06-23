@@ -54,14 +54,18 @@ import { getSvgClipboardFile, isEditablePasteTarget, isSvgSource } from '@/utils
 import { getImageClipboardFile, hasClipboardFiles, readFileAsDataUrl, getImageTypeFromDataUrl } from '@/utils/png'
 import {
   DndContext,
+  DragOverlay,
   closestCenter,
+  pointerWithin,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
+  type DragStartEvent,
   type DragEndEvent,
   type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core'
 import {
   arrayMove,
@@ -176,6 +180,7 @@ interface FolderItemProps {
   folder: DiagramFolder
   children: React.ReactNode
   isOver: boolean
+  isActive: boolean
   depth: number
   collapsed: boolean
   onToggle: () => void
@@ -189,6 +194,7 @@ function FolderItem({
   folder,
   children,
   isOver,
+  isActive,
   depth,
   collapsed,
   onToggle,
@@ -207,18 +213,12 @@ function FolderItem({
     isDragging,
   } = useSortable({ id: folder.id })
 
-  // useDroppable 负责接收图表拖入（独立 id，不与 sortable id 冲突）
+  // useDroppable 只挂在 header 行，不覆盖展开的子内容区
   const { setNodeRef: setDropRef } = useDroppable({ id: `folder-drop-${folder.id}` })
-
-  // 合并两个 ref
-  const setRef = (el: HTMLDivElement | null) => {
-    setSortableRef(el)
-    setDropRef(el)
-  }
 
   return (
     <div
-      ref={setRef}
+      ref={setSortableRef}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -227,8 +227,9 @@ function FolderItem({
       }}
     >
       <div
+        ref={setDropRef}
         className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
-          isOver ? 'bg-accent ring-1 ring-primary' : ''
+          isOver ? 'ring-1 ring-primary bg-accent' : isActive ? 'bg-accent/60' : ''
         }`}
         onClick={onToggle}
       >
@@ -293,11 +294,36 @@ function FolderItem({
 
 // ─── TreeRenderer ─────────────────────────────────────────────────────────────
 
+// ─── DragOverlayItem ──────────────────────────────────────────────────────────
+
+function DragOverlayItem({ id, diagrams, folders }: { id: string; diagrams: Diagram[]; folders: DiagramFolder[] }) {
+  const diagram = diagrams.find((d) => d.id === id)
+  const folder = folders.find((f) => f.id === id)
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-background border shadow-lg opacity-90 text-sm">
+      {diagram ? (
+        <>
+          <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="truncate max-w-[160px]">{diagram.name}</span>
+        </>
+      ) : folder ? (
+        <>
+          <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="truncate max-w-[160px]">{folder.name}</span>
+        </>
+      ) : null}
+    </div>
+  )
+}
+
+// ─── TreeRenderer ─────────────────────────────────────────────────────────────
+
 interface TreeRendererProps {
   nodes: TreeNode[]
   depth: number
   collapsedFolders: Set<string>
   overFolderId: string | null
+  activeFolderId: string | null
   currentDiagramId: string | undefined
   isAuthenticated: boolean
   onToggleFolder: (id: string) => void
@@ -316,6 +342,7 @@ function TreeRenderer({
   depth,
   collapsedFolders,
   overFolderId,
+  activeFolderId,
   currentDiagramId,
   isAuthenticated,
   onToggleFolder,
@@ -348,7 +375,6 @@ function TreeRenderer({
         }
 
         const collapsed = collapsedFolders.has(node.folder.id)
-        // 子层所有 sortable ID（文件夹 + 图表，按 node 顺序）
         const childIds = node.children.map((c) =>
           c.type === 'folder' ? c.folder.id : c.diagram.id
         )
@@ -360,6 +386,7 @@ function TreeRenderer({
             depth={depth}
             collapsed={collapsed}
             isOver={overFolderId === node.folder.id}
+            isActive={activeFolderId === node.folder.id}
             onToggle={() => onToggleFolder(node.folder.id)}
             onRename={onRenameFolderOpen}
             onDelete={onDeleteFolder}
@@ -372,6 +399,7 @@ function TreeRenderer({
                 depth={depth + 1}
                 collapsedFolders={collapsedFolders}
                 overFolderId={overFolderId}
+                activeFolderId={activeFolderId}
                 currentDiagramId={currentDiagramId}
                 isAuthenticated={isAuthenticated}
                 onToggleFolder={onToggleFolder}
@@ -407,7 +435,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     moveDiagramToFolder,
   } = useDiagramStore()
 
-  const { folders, createFolder, updateFolder, deleteFolder } = useFolderStore()
+  const { folders, createFolder, updateFolder, deleteFolder, moveFolderToParent } = useFolderStore()
   const { isAuthenticated } = useSyncStore()
 
   // Dialog state
@@ -424,6 +452,10 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
+  // 当前激活的文件夹（决定工具栏「新建」的默认父级）
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null)
+  // 当前正在拖拽的 item id（用于 DragOverlay）
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -437,7 +469,25 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   // 根层所有 sortable ID（文件夹 + 图表混排）
   const rootItemIds = getContainerItems(diagrams, folders, null).map((i) => i.id)
 
+  // ── 自定义碰撞检测 ──
+  // 指针落在文件夹 drop zone 内时优先返回 folder-drop-X（触发移入）
+  // 其余情况走 closestCenter（触发排序）
+  const collisionDetection: CollisionDetection = (args) => {
+    const folderDropContainers = args.droppableContainers.filter((c) =>
+      String(c.id).startsWith('folder-drop-')
+    )
+    if (folderDropContainers.length > 0) {
+      const hits = pointerWithin({ ...args, droppableContainers: folderDropContainers })
+      if (hits.length > 0) return hits
+    }
+    return closestCenter(args)
+  }
+
   // ── DnD handlers ──
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveDragId(event.active.id as string)
+  }
 
   const handleDragOver = (event: DragOverEvent) => {
     const overId = event.over?.id as string | undefined
@@ -449,46 +499,47 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     }
   }
 
-  /**
-   * 将容器内混排列表按新顺序持久化（文件夹 + 图表的 order 均使用其在列表中的绝对 index）
-   */
   const applyContainerReorder = (containerItems: ReturnType<typeof getContainerItems>) => {
     containerItems.forEach(({ kind, id }, idx) => {
-      if (kind === 'diagram') {
-        updateDiagram(id, { order: idx })
-      } else {
-        updateFolder(id, { order: idx })
-      }
+      if (kind === 'diagram') updateDiagram(id, { order: idx })
+      else updateFolder(id, { order: idx })
     })
   }
 
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveDragId(null)
     setOverFolderId(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
 
     const activeId = active.id as string
     const overId = over.id as string
+    const activeKind = getItemKind(activeId, diagrams, folders)
+    if (!activeKind) return
 
-    // 拖到文件夹 drop zone → 图表移入文件夹
+    // 拖到文件夹 drop zone（pointerWithin 命中）→ 移入
     if (overId.startsWith('folder-drop-')) {
       const targetFolderId = overId.replace('folder-drop-', '')
-      const activeDiagram = diagrams.find((d) => d.id === activeId)
-      if (activeDiagram && activeDiagram.folderId !== targetFolderId) {
-        moveDiagramToFolder(activeId, targetFolderId)
+      if (activeKind === 'diagram') {
+        const d = diagrams.find((x) => x.id === activeId)
+        if (d && d.folderId !== targetFolderId) moveDiagramToFolder(activeId, targetFolderId)
+      } else {
+        // 文件夹拖入另一文件夹
+        const f = folders.find((x) => x.id === activeId)
+        if (f && f.parentId !== targetFolderId) moveFolderToParent(activeId, targetFolderId)
       }
       return
     }
 
-    const activeKind = getItemKind(activeId, diagrams, folders)
-    if (!activeKind) return
-
     const sourceContainer = getContainerOf(activeId, diagrams, folders)
     const targetContainer = getContainerOf(overId, diagrams, folders)
 
-    // 文件夹拖拽：只在同层排序，不支持跨层移动
     if (activeKind === 'folder') {
-      if (sourceContainer !== targetContainer) return
+      if (sourceContainer !== targetContainer) {
+        // 文件夹跨层排序 → 移入目标容器
+        moveFolderToParent(activeId, targetContainer)
+        return
+      }
       const containerItems = getContainerItems(diagrams, folders, sourceContainer)
       const oldIndex = containerItems.findIndex((i) => i.id === activeId)
       const newIndex = containerItems.findIndex((i) => i.id === overId)
@@ -498,9 +549,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
       return
     }
 
-    // 图表拖拽
+    // 图表拖拽：同容器排序 或 跨容器移动
     if (sourceContainer === targetContainer) {
-      // 同容器排序（混排）
       const containerItems = getContainerItems(diagrams, folders, sourceContainer)
       const oldIndex = containerItems.findIndex((i) => i.id === activeId)
       const newIndex = containerItems.findIndex((i) => i.id === overId)
@@ -508,9 +558,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         applyContainerReorder(arrayMove(containerItems, oldIndex, newIndex))
       }
     } else {
-      // 跨容器移动（目标容器 = overId 所在的 folderId）
-      const activeDiagram = diagrams.find((d) => d.id === activeId)
-      if (activeDiagram) moveDiagramToFolder(activeId, targetContainer)
+      moveDiagramToFolder(activeId, targetContainer)
     }
   }
 
@@ -668,13 +716,10 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   // ── Folder collapse toggle ──
 
   const toggleFolder = (id: string) => {
+    setActiveFolderId(id)
     setCollapsedFolders((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
+      next.has(id) ? next.delete(id) : next.add(id)
       return next
     })
   }
@@ -700,7 +745,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <Button
               size="sm"
               className="flex-1"
-              onClick={() => { setCreateDiagramFolderId(null); setInputName(''); setNewDiagramType('mermaid') }}
+              onClick={() => { setCreateDiagramFolderId(activeFolderId); setInputName(''); setNewDiagramType('mermaid') }}
             >
               <Plus className="h-4 w-4 mr-1" />
               新建图表
@@ -750,7 +795,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               variant="outline"
               size="sm"
               title="新建文件夹"
-              onClick={() => { setCreateFolderParentId(null); setInputName('') }}
+              onClick={() => { setCreateFolderParentId(activeFolderId); setInputName('') }}
             >
               <FolderPlus className="h-4 w-4" />
             </Button>
@@ -806,7 +851,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={collisionDetection}
+            onDragStart={handleDragStart}
             onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
@@ -817,6 +863,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   depth={0}
                   collapsedFolders={collapsedFolders}
                   overFolderId={overFolderId}
+                  activeFolderId={activeFolderId}
                   currentDiagramId={currentDiagram?.id}
                   isAuthenticated={isAuthenticated}
                   onToggleFolder={toggleFolder}
@@ -831,6 +878,13 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                 />
               </div>
             </SortableContext>
+            <DragOverlay dropAnimation={null}>
+              {activeDragId ? <DragOverlayItem
+                id={activeDragId}
+                diagrams={diagrams}
+                folders={folders}
+              /> : null}
+            </DragOverlay>
           </DndContext>
         )}
       </ScrollArea>

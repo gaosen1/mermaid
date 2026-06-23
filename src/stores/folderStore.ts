@@ -10,6 +10,7 @@ interface FolderState {
   updateFolder: (id: string, updates: Partial<Pick<DiagramFolder, 'name' | 'order'>>) => Promise<void>
   deleteFolder: (id: string) => Promise<void>
   reorderFolders: (folderIds: string[]) => Promise<void>
+  moveFolderToParent: (folderId: string, newParentId: string | null) => Promise<void>
 }
 
 export const useFolderStore = create<FolderState>((set) => ({
@@ -60,6 +61,22 @@ export const useFolderStore = create<FolderState>((set) => ({
     await db.folders.bulkDelete(toDelete)
     set((state) => ({
       folders: state.folders.filter((f) => !toDelete.includes(f.id)),
+    }))
+  },
+
+  moveFolderToParent: async (folderId, newParentId) => {
+    const state = useFolderStore.getState()
+    // 防止循环：不能移入自己的后代
+    const descendants = collectDescendants(folderId, state.folders)
+    if (newParentId && (newParentId === folderId || descendants.includes(newParentId))) return
+
+    const targetSiblings = state.folders.filter((f) => (f.parentId ?? null) === newParentId)
+    const newOrder = targetSiblings.length
+    await db.folders.update(folderId, { parentId: newParentId, order: newOrder, updatedAt: Date.now() })
+    set((s) => ({
+      folders: s.folders.map((f) =>
+        f.id === folderId ? { ...f, parentId: newParentId, order: newOrder, updatedAt: Date.now() } : f
+      ),
     }))
   },
 
