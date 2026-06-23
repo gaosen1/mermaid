@@ -21,6 +21,8 @@ interface DiagramState {
   deleteDiagram: (id: string) => Promise<void>
   setCurrentDiagram: (diagram: Diagram | null) => void
   reorderDiagrams: (diagramIds: string[]) => Promise<void>
+  reorderDiagramsInContainer: (folderId: string | null, diagramIds: string[]) => Promise<void>
+  moveDiagramToFolder: (diagramId: string, folderId: string | null) => Promise<void>
 
   loadSnapshots: (diagramId: string) => Promise<void>
   createSnapshot: (diagramId: string, source: string, description?: string, isAuto?: boolean) => Promise<Snapshot>
@@ -227,6 +229,37 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
 
       return { diagrams: reorderedDiagrams }
     })
+  },
+
+  reorderDiagramsInContainer: async (folderId, diagramIds) => {
+    const updates = diagramIds.map((id, index) => ({
+      key: id,
+      changes: { order: index, updatedAt: Date.now() },
+    }))
+    await db.diagrams.bulkUpdate(updates)
+    set((state) => ({
+      diagrams: state.diagrams.map((d) => {
+        const idx = diagramIds.indexOf(d.id)
+        if (idx === -1) return d
+        return { ...d, order: idx, updatedAt: Date.now() }
+      }),
+    }))
+    // suppress unused param lint
+    void folderId
+  },
+
+  moveDiagramToFolder: async (diagramId, folderId) => {
+    const now = Date.now()
+    // 用内存状态计算目标容器内最大 order（避免 Dexie 不支持 equals(null) 查询）
+    const state = useDiagramStore.getState()
+    const targetDiagrams = state.diagrams.filter((d) => (d.folderId ?? null) === folderId)
+    const maxOrder = targetDiagrams.reduce((m, d) => Math.max(m, d.order ?? 0), -1)
+    await db.diagrams.update(diagramId, { folderId, order: maxOrder + 1, updatedAt: now })
+    set((s) => ({
+      diagrams: s.diagrams.map((d) =>
+        d.id === diagramId ? { ...d, folderId, order: maxOrder + 1, updatedAt: now } : d
+      ),
+    }))
   },
 
   loadSnapshots: async (diagramId) => {

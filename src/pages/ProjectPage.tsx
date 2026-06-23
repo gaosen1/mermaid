@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useProjectStore } from '@/stores/projectStore'
 import { useDiagramStore } from '@/stores/diagramStore'
+import { useFolderStore } from '@/stores/folderStore'
 import { DiagramList } from '@/components/diagram/DiagramList'
 import { DiagramEditor } from '@/components/mermaid/DiagramEditor'
 import { HtmlDiagramEditor } from '@/components/html/HtmlDiagramEditor'
@@ -53,6 +54,7 @@ interface ProjectPageProps {
 export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSelectDiagram }: ProjectPageProps) {
   const { projects, currentProject, loading: projectLoading, setCurrentProject } = useProjectStore()
   const { diagrams, loadDiagramsByProject, currentDiagram, setCurrentDiagram, createDiagram } = useDiagramStore()
+  const { loadFoldersByProject } = useFolderStore()
 
   const [sidebarState, setSidebarState] = useState<SidebarState>(loadSidebarState)
   const [isResizing, setIsResizing] = useState(false)
@@ -63,8 +65,9 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
     if (project) {
       setCurrentProject(project)
       loadDiagramsByProject(projectId)
+      loadFoldersByProject(projectId)
     }
-  }, [projectId, projects, setCurrentProject, loadDiagramsByProject])
+  }, [projectId, projects, setCurrentProject, loadDiagramsByProject, loadFoldersByProject])
 
   useEffect(() => {
     setCurrentDiagram(null)

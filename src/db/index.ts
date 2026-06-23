@@ -1,10 +1,11 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Project, Diagram, Snapshot, UserSettings } from '@/types'
+import type { Project, Diagram, DiagramFolder, Snapshot, UserSettings } from '@/types'
 import type { SyncLogEntry, SyncQueueItem } from '@/types/sync'
 
 const db = new Dexie('MermaidLocalDB') as Dexie & {
   projects: EntityTable<Project, 'id'>
   diagrams: EntityTable<Diagram, 'id'>
+  folders: EntityTable<DiagramFolder, 'id'>
   snapshots: EntityTable<Snapshot, 'id'>
   settings: EntityTable<UserSettings, 'id'>
   // 同步相关表
@@ -119,6 +120,18 @@ db.version(4)
       })
 
     console.log('Database migrated to version 4 with diagram type support')
+  })
+
+// 版本 5：添加目录分级支持
+db.version(5)
+  .stores({
+    projects: 'id, name, updatedAt, *tags, syncStatus, lastSyncTime',
+    diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+    folders: 'id, projectId, parentId, name, order, updatedAt',
+    snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+    settings: 'id',
+    syncLog: '++id, timestamp, status, entityType, entityId',
+    syncQueue: '++id, entityType, entityId, priority, createdAt',
   })
 
 export { db }

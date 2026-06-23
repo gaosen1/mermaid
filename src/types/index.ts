@@ -17,9 +17,20 @@ export interface Project {
   syncError?: string
 }
 
+export interface DiagramFolder {
+  id: string
+  projectId: string
+  parentId?: string | null
+  name: string
+  order?: number
+  createdAt: number
+  updatedAt: number
+}
+
 export interface Diagram {
   id: string
   projectId: string
+  folderId?: string | null
   name: string
   type: DiagramType
   source: string
