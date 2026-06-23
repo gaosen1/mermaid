@@ -180,9 +180,18 @@ export function MarkdownTableEditor({
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
       const delta = e.deltaY > 0 ? 0.9 : 1.1
+      const rect = preview.getBoundingClientRect()
+      // 鼠标相对于容器的坐标
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
       setCanvasState((prev) => {
         const newScale = Math.max(0.1, Math.min(3, prev.scale * delta))
-        const updated = { ...prev, scale: newScale }
+        // 保持鼠标指向的内容点不动：
+        // mouseX = offsetX + contentX * scale  =>  contentX = (mouseX - offsetX) / scale
+        // 新 offsetX = mouseX - contentX * newScale
+        const offsetX = mouseX - ((mouseX - prev.offsetX) / prev.scale) * newScale
+        const offsetY = mouseY - ((mouseY - prev.offsetY) / prev.scale) * newScale
+        const updated = { ...prev, scale: newScale, offsetX, offsetY }
         saveCanvasState(diagramId, updated)
         return updated
       })
