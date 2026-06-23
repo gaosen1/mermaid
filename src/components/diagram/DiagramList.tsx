@@ -3,7 +3,6 @@ import { useDiagramStore } from '@/stores/diagramStore'
 import { useFolderStore } from '@/stores/folderStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
   Dialog,
@@ -45,11 +44,28 @@ import {
   FolderOpen,
   ChevronRight,
   ChevronDown,
+  GitBranch,
+  Code2,
+  Spline,
+  Image,
+  Table,
 } from 'lucide-react'
+function DiagramTypeIcon({ type, className }: { type: DiagramType; className?: string }) {
+  switch (type) {
+    case 'mermaid': return <GitBranch className={className} />
+    case 'html': return <Code2 className={className} />
+    case 'svg': return <Spline className={className} />
+    case 'png':
+    case 'jpg':
+    case 'webp': return <Image className={className} />
+    case 'markdown': return <Table className={className} />
+    default: return <FileCode2 className={className} />
+  }
+}
 import { exportDiagram, importDiagram } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
 import type { Diagram, DiagramFolder, DiagramType } from '@/types'
-import { getDiagramAcceptTypes, getDiagramFileExtension, getDiagramTypeLabel } from '@/utils/diagram'
+import { getDiagramAcceptTypes, getDiagramFileExtension } from '@/utils/diagram'
 import { getSvgClipboardFile, isEditablePasteTarget, isSvgSource } from '@/utils/svg'
 import { getImageClipboardFile, hasClipboardFiles, readFileAsDataUrl, getImageTypeFromDataUrl } from '@/utils/png'
 import {
@@ -131,16 +147,13 @@ function SortableDiagramItem({
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
         </div>
-        <FileCode2 className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
+        <DiagramTypeIcon type={diagram.type} className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
           </TooltipTrigger>
           <TooltipContent side="right">{diagram.name}</TooltipContent>
         </Tooltip>
-        <Badge variant="outline" className="diagram-list-item-type text-[10px] uppercase tracking-wide">
-          {getDiagramTypeLabel(diagram.type)}
-        </Badge>
         {isAuthenticated && diagram.syncStatus && (
           <SyncStatusBadge status={diagram.syncStatus} size="sm" className="diagram-list-item-sync-status" />
         )}
@@ -304,12 +317,12 @@ function DragOverlayItem({ id, diagrams, folders }: { id: string; diagrams: Diag
       {diagram ? (
         <>
           <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="truncate max-w-[160px]">{diagram.name}</span>
+          <span className="truncate max-w-40">{diagram.name}</span>
         </>
       ) : folder ? (
         <>
           <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <span className="truncate max-w-[160px]">{folder.name}</span>
+          <span className="truncate max-w-40">{folder.name}</span>
         </>
       ) : null}
     </div>
@@ -447,6 +460,10 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [editingDiagram, setEditingDiagram] = useState<Diagram | null>(null)
   const [editFolderOpen, setEditFolderOpen] = useState(false)
   const [editingFolder, setEditingFolder] = useState<DiagramFolder | null>(null)
+  const [deleteDiagramOpen, setDeleteDiagramOpen] = useState(false)
+  const [deletingDiagram, setDeletingDiagram] = useState<Diagram | null>(null)
+  const [deleteFolderOpen, setDeleteFolderOpen] = useState(false)
+  const [deletingFolder, setDeletingFolder] = useState<DiagramFolder | null>(null)
 
   const [inputName, setInputName] = useState('')
   const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
@@ -591,10 +608,16 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     setEditDiagramOpen(false)
   }
 
-  const handleDeleteDiagram = async (diagram: Diagram) => {
-    if (confirm(`确定要删除图表 "${diagram.name}" 吗？此操作不可撤销。`)) {
-      await deleteDiagram(diagram.id)
-    }
+  const handleDeleteDiagram = (diagram: Diagram) => {
+    setDeletingDiagram(diagram)
+    setDeleteDiagramOpen(true)
+  }
+
+  const confirmDeleteDiagram = async () => {
+    if (!deletingDiagram) return
+    await deleteDiagram(deletingDiagram.id)
+    setDeletingDiagram(null)
+    setDeleteDiagramOpen(false)
   }
 
   const handleExportDiagram = async (diagram: Diagram) => {
@@ -630,10 +653,16 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     setEditFolderOpen(false)
   }
 
-  const handleDeleteFolder = async (folder: DiagramFolder) => {
-    if (confirm(`确定要删除文件夹 "${folder.name}" 吗？文件夹内的图表将移至根目录。`)) {
-      await deleteFolder(folder.id)
-    }
+  const handleDeleteFolder = (folder: DiagramFolder) => {
+    setDeletingFolder(folder)
+    setDeleteFolderOpen(true)
+  }
+
+  const confirmDeleteFolder = async () => {
+    if (!deletingFolder) return
+    await deleteFolder(deletingFolder.id)
+    setDeletingFolder(null)
+    setDeleteFolderOpen(false)
   }
 
   const openRenameFolderDialog = (folder: DiagramFolder) => {
@@ -719,7 +748,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     setActiveFolderId(id)
     setCollapsedFolders((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) { next.delete(id) } else { next.add(id) }
       return next
     })
   }
@@ -763,7 +792,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>图表名称</Label>
-                <Input value={inputName} onChange={(e) => setInputName(e.target.value)} placeholder="输入图表名称" />
+                <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateDiagram() }} placeholder="输入图表名称" />
               </div>
               <div className="space-y-2">
                 <Label>图表类型</Label>
@@ -811,7 +840,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             </DialogHeader>
             <div className="space-y-2 py-4">
               <Label>文件夹名称</Label>
-              <Input value={inputName} onChange={(e) => setInputName(e.target.value)} placeholder="输入文件夹名称" />
+              <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder() }} placeholder="输入文件夹名称" />
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateFolderOpen(false)}>取消</Button>
@@ -898,7 +927,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
           </DialogHeader>
           <div className="space-y-2 py-4">
             <Label>图表名称</Label>
-            <Input value={inputName} onChange={(e) => setInputName(e.target.value)} placeholder="输入图表名称" />
+            <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEditDiagram() }} placeholder="输入图表名称" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDiagramOpen(false)}>取消</Button>
@@ -916,11 +945,43 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
           </DialogHeader>
           <div className="space-y-2 py-4">
             <Label>文件夹名称</Label>
-            <Input value={inputName} onChange={(e) => setInputName(e.target.value)} placeholder="输入文件夹名称" />
+            <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEditFolder() }} placeholder="输入文件夹名称" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditFolderOpen(false)}>取消</Button>
             <Button onClick={handleEditFolder}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Diagram Dialog */}
+      <Dialog open={deleteDiagramOpen} onOpenChange={setDeleteDiagramOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除图表</DialogTitle>
+            <DialogDescription>
+              确定要删除图表「{deletingDiagram?.name}」吗？此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDiagramOpen(false)}>取消</Button>
+            <Button variant="destructive" onClick={confirmDeleteDiagram}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Folder Dialog */}
+      <Dialog open={deleteFolderOpen} onOpenChange={setDeleteFolderOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除文件夹</DialogTitle>
+            <DialogDescription>
+              确定要删除文件夹「{deletingFolder?.name}」吗？文件夹内的图表将移至根目录。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteFolderOpen(false)}>取消</Button>
+            <Button variant="destructive" onClick={confirmDeleteFolder}>删除</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
