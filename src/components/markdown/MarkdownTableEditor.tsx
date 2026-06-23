@@ -11,7 +11,7 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore'
 import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
-import { parseMarkdown, markdownTableToHtml } from '@/utils/markdown'
+import { renderMarkdown } from '@/utils/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
 const EDITOR_STORAGE_KEY = 'markdown-diagram-editor-state'
@@ -274,9 +274,7 @@ export function MarkdownTableEditor({
     )
   }
 
-  const parsed = parseMarkdown(source)
-  const isTable = parsed.type === 'table'
-  const tableHtml = isTable && parsed.rows ? markdownTableToHtml(parsed.rows) : ''
+  const renderedHtml = renderMarkdown(source)
 
   const editorLeft = sidebarWidth === 0 ? 12 : sidebarWidth + 4
   const editorTop = sidebarWidth === 0 ? 60 : 12
@@ -295,36 +293,43 @@ export function MarkdownTableEditor({
             transform: `translate(${canvasState.offsetX}px, ${canvasState.offsetY}px) scale(${canvasState.scale})`,
           }}
         >
-          {isTable ? (
-            <div className="max-w-full">
-              <style>{`
-                .markdown-table {
-                  border-collapse: collapse;
-                }
-                .markdown-table th,
-                .markdown-table td {
-                  border: 1px solid var(--border);
-                  padding: 0.5rem;
-                  text-align: left;
-                }
-                .markdown-table th {
-                  background-color: var(--muted);
-                  font-weight: 600;
-                }
-                .markdown-table tr:nth-child(even) {
-                  background-color: var(--muted);
-                }
-              `}</style>
-              <div
-                className="markdown-table text-sm"
-                dangerouslySetInnerHTML={{ __html: tableHtml }}
-              />
-            </div>
-          ) : (
-            <div className="text-muted-foreground whitespace-pre-wrap font-mono text-sm">
-              {parsed.text}
-            </div>
-          )}
+          <style>{`
+            .md-prose { font-size: 14px; line-height: 1.7; color: var(--foreground); }
+            .md-prose h1,.md-prose h2,.md-prose h3,.md-prose h4,.md-prose h5,.md-prose h6 {
+              font-weight: 600; margin: 1.2em 0 0.4em; line-height: 1.3;
+            }
+            .md-prose h1 { font-size: 1.8em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+            .md-prose h2 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
+            .md-prose h3 { font-size: 1.15em; }
+            .md-prose p { margin: 0.6em 0; }
+            .md-prose ul,.md-prose ol { padding-left: 1.6em; margin: 0.6em 0; }
+            .md-prose li { margin: 0.2em 0; }
+            .md-prose code {
+              background: var(--muted); border-radius: 3px;
+              padding: 0.1em 0.4em; font-size: 0.85em; font-family: monospace;
+            }
+            .md-prose pre {
+              background: var(--muted); border-radius: 6px;
+              padding: 1em; overflow-x: auto; margin: 0.8em 0;
+            }
+            .md-prose pre code { background: none; padding: 0; }
+            .md-prose blockquote {
+              border-left: 3px solid var(--border); margin: 0.8em 0;
+              padding: 0.2em 1em; color: var(--muted-foreground);
+            }
+            .md-prose hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
+            .md-prose a { color: var(--primary); text-decoration: underline; }
+            .md-prose table { border-collapse: collapse; margin: 0.8em 0; }
+            .md-prose th,.md-prose td {
+              border: 1px solid var(--border); padding: 0.4em 0.8em; text-align: left;
+            }
+            .md-prose th { background: var(--muted); font-weight: 600; }
+            .md-prose tr:nth-child(even) td { background: hsl(var(--muted)/0.4); }
+          `}</style>
+          <div
+            className="md-prose"
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
+          />
         </div>
 
         {/* Canvas controls hint */}
@@ -438,7 +443,7 @@ export function MarkdownTableEditor({
               className="h-full border-0 rounded-none"
               darkMode={isDarkMode}
               language="markdown"
-              placeholder="输入 Markdown 表格格式：&#10;| 列1 | 列2 |&#10;|-----|-----|&#10;| 值1 | 值2 |"
+              placeholder="输入 Markdown 内容（支持标题、表格、代码块、列表等）"
             />
           ) : (
             <ScrollArea className="h-full">
