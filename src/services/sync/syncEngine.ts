@@ -6,7 +6,7 @@
 import { db } from '@/db'
 import type { Project, Diagram } from '@/types'
 import type { SyncLogEntry, SyncSettings } from '@/types/sync'
-import { getFile, putFile, putFileBase64 } from '../github/files'
+import { getFile, putFile, putFileBase64, listDirectory } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
 import { getDiagramFileExtension } from '@/utils/diagram'
 import { getPngDataUrlBase64 } from '@/utils/png'
@@ -125,6 +125,11 @@ export async function syncAll(
     result.errors.push(`Sync failed: ${error}`)
   } finally {
     isSyncing = false
+  }
+
+  // 只要有任何错误，同步结果就标记为失败
+  if (result.errors.length > 0) {
+    result.success = false
   }
 
   // 记录同步日志
@@ -316,11 +321,12 @@ async function pullRemoteChanges(
   let pulled = 0
   const conflicts = 0
 
-  const localIds = new Set(localProjects.map((p) => p.id))
+  const localProjectIds = new Set(localProjects.map((p) => p.id))
+  const localDiagrams = await db.diagrams.toArray()
+  const localDiagramIds = new Set(localDiagrams.map((d) => d.id))
 
-  // 查找远端有但本地没有的项目
   for (const [id, remote] of remoteProjects) {
-    if (!localIds.has(id)) {
+    if (!localProjectIds.has(id)) {
       await db.projects.add({
         ...remote,
         syncStatus: 'synced',
@@ -328,9 +334,91 @@ async function pullRemoteChanges(
       })
       pulled++
     }
+
+    // 不论项目是否已存在，都拉取缺失的远端图表
+    const diagramsPulled = await pullRemoteDiagrams(id, localDiagramIds)
+    pulled += diagramsPulled
   }
 
   return { pulled, conflicts }
+}
+
+/**
+ * 拉取单个项目下远端有但本地缺失的图表
+ */
+async function pullRemoteDiagrams(projectId: string, localDiagramIds: Set<string>): Promise<number> {
+  let pulled = 0
+  const dirPath = `data/projects/${projectId}/diagrams`
+
+  try {
+    const remoteFiles = await listDirectory(dirPath)
+
+    for (const file of remoteFiles) {
+      const fileName = file.path.split('/').pop() || ''
+      const diagramId = fileName.replace(/\.[^.]+$/, '')
+
+      if (!diagramId || localDiagramIds.has(diagramId)) continue
+
+      const fileInfo = await getFile(file.path)
+      if (!fileInfo?.content) continue
+
+      try {
+        const parsed = parseDiagramFile(fileInfo.content, diagramId, projectId)
+        await db.diagrams.add({
+          ...parsed,
+          syncStatus: 'synced',
+          lastSyncTime: Date.now(),
+        })
+        localDiagramIds.add(diagramId)
+        pulled++
+      } catch {
+        // 解析失败跳过该图表
+      }
+    }
+  } catch {
+    // 目录不存在或读取失败，忽略
+  }
+
+  return pulled
+}
+
+/**
+ * 解析远端图表文件内容
+ */
+function parseDiagramFile(content: string, diagramId: string, projectId: string): Omit<Diagram, 'syncStatus' | 'lastSyncTime'> {
+  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/)
+  if (!frontmatterMatch) {
+    return {
+      id: diagramId,
+      projectId,
+      name: diagramId,
+      source: content,
+      type: 'flowchart',
+      config: {},
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+  }
+
+  const metaBlock = frontmatterMatch[1]
+  const source = frontmatterMatch[2]
+
+  const idMatch = metaBlock.match(/id:\s*(.+)/)
+  const nameMatch = metaBlock.match(/name:\s*(.+)/)
+  const createdAtMatch = metaBlock.match(/createdAt:\s*(.+)/)
+  const updatedAtMatch = metaBlock.match(/updatedAt:\s*(.+)/)
+  const configMatch = metaBlock.match(/config:\s*(.+)/)
+
+  return {
+    id: idMatch?.[1]?.trim() || diagramId,
+    projectId,
+    name: nameMatch?.[1]?.trim() || diagramId,
+    source: source.trim(),
+    type: 'flowchart',
+    config: configMatch?.[1] ? JSON.parse(configMatch[1].trim()) : {},
+    createdAt: createdAtMatch?.[1] ? new Date(createdAtMatch[1].trim()).getTime() : Date.now(),
+    updatedAt: updatedAtMatch?.[1] ? new Date(updatedAtMatch[1].trim()).getTime() : Date.now(),
+  }
 }
 
 /**

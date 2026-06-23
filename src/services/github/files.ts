@@ -28,7 +28,12 @@ export async function getFile(path: string): Promise<GitHubFileInfo | null> {
     return {
       path: data.path,
       sha: data.sha,
-      content: data.content ? atob(data.content.replace(/\n/g, '')) : undefined,
+      content: (() => {
+        if (!data.content) return undefined
+        const binary = atob(data.content.replace(/\n/g, ''))
+        const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
+        return new TextDecoder().decode(bytes)
+      })(),
       size: data.size,
       url: data.html_url || '',
     }
@@ -73,14 +78,7 @@ export async function putFileBase64(
   const client = getGitHubClient()
   const config = getGitHubConfig()
 
-  try {
-    // 如果没有提供 sha，尝试获取现有文件的 sha
-    let fileSha = sha
-    if (!fileSha) {
-      const existing = await getFile(path)
-      fileSha = existing?.sha
-    }
-
+  const attemptPut = async (fileSha?: string): Promise<{ sha: string; url: string }> => {
     const { data } = await client.repos.createOrUpdateFileContents({
       owner: config.owner,
       repo: config.repo,
@@ -90,12 +88,25 @@ export async function putFileBase64(
       sha: fileSha,
       branch: config.branch,
     })
-
     return {
       sha: data.content?.sha || '',
       url: data.content?.html_url || '',
     }
+  }
+
+  try {
+    let fileSha = sha
+    if (!fileSha) {
+      const existing = await getFile(path)
+      fileSha = existing?.sha
+    }
+    return await attemptPut(fileSha)
   } catch (error) {
+    const err = error as { status?: number }
+    if (err.status === 409) {
+      const existing = await getFile(path)
+      return await attemptPut(existing?.sha)
+    }
     throw new GitHubFileError(`Failed to put file: ${path}`, error as Error)
   }
 }

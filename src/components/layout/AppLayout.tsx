@@ -10,11 +10,10 @@ import { SyncStatusIndicator, ConflictDialog } from '@/components/sync'
 import { HomePage } from '@/pages/HomePage'
 import { ProjectPage } from '@/pages/ProjectPage'
 import { SettingsPage } from '@/pages/SettingsPage'
-import { MermaidThemeTestPage } from '@/pages/MermaidThemeTestPage'
-import { FolderKanban, Settings, Moon, Sun, Monitor, TestTube } from 'lucide-react'
+import { FolderKanban, Settings, Moon, Sun, Monitor } from 'lucide-react'
 import type { Project } from '@/types'
 
-type View = 'home' | 'project' | 'settings' | 'theme-test'
+type View = 'home' | 'project' | 'settings'
 
 interface HashRouteState {
   view: View
@@ -41,10 +40,6 @@ function parsePathRoute(pathname: string): HashRouteState {
     return { view: 'settings', projectId: null, diagramId: null }
   }
 
-  if (segments[0] === 'theme-test') {
-    return { view: 'theme-test', projectId: null, diagramId: null }
-  }
-
   return { view: 'home', projectId: null, diagramId: null }
 }
 
@@ -58,7 +53,6 @@ function buildPathRoute(view: View, projectId: string | null, diagramId: string 
   }
 
   if (view === 'settings') return '/settings'
-  if (view === 'theme-test') return '/theme-test'
   return '/home'
 }
 
@@ -175,14 +169,6 @@ export function AppLayout() {
         >
           <Settings className="h-5 w-5" />
         </Button>
-        <Button
-          variant={view === 'theme-test' ? 'secondary' : 'ghost'}
-          size="icon"
-          onClick={() => setRouteState({ view: 'theme-test', projectId: null, diagramId: null })}
-          title="主题测试"
-        >
-          <TestTube className="h-5 w-5" />
-        </Button>
         <div className="flex-1" />
         <Separator className="w-8" />
         <SyncStatusIndicator />
@@ -202,7 +188,6 @@ export function AppLayout() {
           />
         )}
         {view === 'settings' && <SettingsPage />}
-        {view === 'theme-test' && <MermaidThemeTestPage />}
       </main>
 
       <Toaster />
