@@ -1,8 +1,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { saveAs } from 'file-saver'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { AlertCircle, Copy, Loader2, RefreshCw } from 'lucide-react'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import { Loader2, RefreshCw } from 'lucide-react'
 
 export interface HtmlRendererRef {
   exportPng: () => Promise<void>
@@ -22,12 +22,6 @@ export const HtmlRenderer = forwardRef<HtmlRendererRef, HtmlRendererProps>(
     const [reloadKey, setReloadKey] = useState(0)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
-
-    const handleCopyError = useCallback(() => {
-      if (error) {
-        navigator.clipboard.writeText(error)
-      }
-    }, [error])
 
     const reload = useCallback(() => {
       setLoading(true)
@@ -157,17 +151,7 @@ export const HtmlRenderer = forwardRef<HtmlRendererRef, HtmlRendererProps>(
           </div>
         )}
 
-        {error && (
-          <Alert variant="destructive" className="absolute top-2 left-2 right-14 z-10 bg-background/95">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between gap-2">
-              <span className="break-all text-sm line-clamp-2">{error}</span>
-              <Button variant="outline" size="sm" onClick={handleCopyError} className="shrink-0">
-                <Copy className="h-4 w-4" />
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+        {error && <ErrorAlert error={error} />}
 
         <div className="absolute inset-0 overflow-auto rounded-lg bg-white shadow-inner">
           <iframe

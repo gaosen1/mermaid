@@ -1,8 +1,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { saveAs } from 'file-saver'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { AlertCircle, Copy, RotateCcw } from 'lucide-react'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import { RotateCcw } from 'lucide-react'
 import { useZoomPan } from '@/hooks/useZoomPan'
 
 export interface SvgRendererRef {
@@ -48,10 +48,6 @@ export const SvgRenderer = forwardRef<SvgRendererRef, SvgRendererProps>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [normalizedSvg])
 
-    const handleCopyError = useCallback(() => {
-      if (error) navigator.clipboard.writeText(error)
-    }, [error])
-
     const exportPng = useCallback(async () => {
       if (!normalizedSvg) throw new Error(error || 'SVG 预览尚未准备完成')
       const { width, height } = getSvgDimensions(normalizedSvg)
@@ -80,17 +76,7 @@ export const SvgRenderer = forwardRef<SvgRendererRef, SvgRendererProps>(
     return (
       <div className={`relative h-full w-full ${className}`}>
         {/* 错误提示 */}
-        {error && (
-          <Alert variant="destructive" className="absolute top-2 left-2 right-14 z-10 bg-background/95">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between gap-2">
-              <span className="break-all text-sm line-clamp-2">{error}</span>
-              <Button variant="outline" size="sm" onClick={handleCopyError} className="shrink-0">
-                <Copy className="h-4 w-4" />
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+        {error && <ErrorAlert error={error} />}
 
         {/* 缩放控件 */}
         {normalizedSvg && (

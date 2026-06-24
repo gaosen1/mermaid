@@ -9,9 +9,9 @@ import {
 } from '@/utils/mermaid'
 import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter } from '@/utils/dsl'
 import { saveAs } from 'file-saver'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Copy, AlertCircle, RotateCcw, Loader2 } from 'lucide-react'
+import { ErrorAlert } from '@/components/ui/error-alert'
+import { RotateCcw, Loader2 } from 'lucide-react'
 import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useNodeSelection, type SelectedNode } from './useNodeSelection'
 import { useViewTransform } from './useViewTransform'
@@ -333,11 +333,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       }
     }, [isRendering, fitToContainer])
 
-    const handleCopyError = useCallback(() => {
-      if (error) {
-        navigator.clipboard.writeText(error)
-      }
-    }, [error])
 
     const renderLightExportSource = useCallback(async (): Promise<ExportSvgSource | null> => {
       if (!source.trim()) return null
@@ -474,17 +469,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           </div>
         )}
 
-        {error && (
-          <Alert variant="destructive" className="absolute top-2 left-2 right-14 z-10 bg-background/95">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription className="flex items-center justify-between gap-2">
-              <span className="break-all text-sm line-clamp-2">{error}</span>
-              <Button variant="outline" size="sm" onClick={handleCopyError} className="shrink-0">
-                <Copy className="h-4 w-4" />
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
+        {error && <ErrorAlert error={error} />}
 
         <div
           ref={wrapperRef}
