@@ -38,3 +38,5 @@
     - 普通 item 与 folder item 的层级关系，应该体现在缩进上，嵌套层级越深，缩进越多；
     - 某个 item / folder item 移入或移出 folder item 时，如果移到了 folder item 的边缘，应该判定为用户是想排序而不是改变层级
     - 只能有一个 item 处于 active 态，不能同时存在一个 item 和 folder item 处于 active 态
+
+17. 图表类型中的 txt，当前设计的有误，应该和 markdown 的设计基本类似：仍然使用已有的 DiagramEditor，仍然使用带滚轮缩放（缩放中心为鼠标位置）、右键拖放功能的画布，
