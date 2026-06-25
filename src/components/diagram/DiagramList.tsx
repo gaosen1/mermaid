@@ -50,18 +50,38 @@ import {
   Image,
   Table,
 } from 'lucide-react'
+const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
+  mermaid: 'Mermaid',
+  html: 'HTML',
+  svg: 'SVG',
+  png: 'PNG',
+  jpg: 'JPG',
+  webp: 'WebP',
+  markdown: 'Markdown 表格',
+  txt: '纯文本 (TXT)',
+}
+
 function DiagramTypeIcon({ type, className }: { type: DiagramType; className?: string }) {
+  let icon: React.ReactNode
   switch (type) {
-    case 'mermaid': return <GitBranch className={className} />
-    case 'html': return <Code2 className={className} />
-    case 'svg': return <Spline className={className} />
+    case 'mermaid': icon = <GitBranch className={className} />; break
+    case 'html': icon = <Code2 className={className} />; break
+    case 'svg': icon = <Spline className={className} />; break
     case 'png':
     case 'jpg':
-    case 'webp': return <Image className={className} />
-    case 'markdown': return <Table className={className} />
-    case 'txt': return <FileCode2 className={className} />
-    default: return <FileCode2 className={className} />
+    case 'webp': icon = <Image className={className} />; break
+    case 'markdown': icon = <Table className={className} />; break
+    case 'txt': icon = <FileCode2 className={className} />; break
+    default: icon = <FileCode2 className={className} />
   }
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex shrink-0">{icon}</span>
+      </TooltipTrigger>
+      <TooltipContent side="right">{DIAGRAM_TYPE_LABELS[type] ?? type}</TooltipContent>
+    </Tooltip>
+  )
 }
 import { exportDiagram, importDiagram } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
@@ -468,6 +488,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
   const [inputName, setInputName] = useState('')
   const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
+  const [editDiagramType, setEditDiagramType] = useState<DiagramType>('mermaid')
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
   // 当前激活的文件夹（决定工具栏「新建」的默认父级）
@@ -576,7 +597,23 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         applyContainerReorder(arrayMove(containerItems, oldIndex, newIndex))
       }
     } else {
-      moveDiagramToFolder(activeId, targetContainer)
+      // 跨容器移动：将 activeId 插入 overId 所在位置，而非简单 append
+      const targetItems = getContainerItems(diagrams, folders, targetContainer)
+      const overIndex = targetItems.findIndex((i) => i.id === overId)
+      const insertIndex = overIndex >= 0 ? overIndex : targetItems.length
+      const newItems = [
+        ...targetItems.slice(0, insertIndex),
+        { id: activeId, kind: 'diagram' as const },
+        ...targetItems.slice(insertIndex),
+      ]
+      // 先更新 folderId，同时设置 order
+      updateDiagram(activeId, { folderId: targetContainer, order: insertIndex })
+      // 修正被挤下的 items 的 order
+      newItems.forEach(({ kind, id }, idx) => {
+        if (id === activeId) return
+        if (kind === 'diagram') updateDiagram(id, { order: idx })
+        else updateFolder(id, { order: idx })
+      })
     }
   }
 
@@ -603,7 +640,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
   const handleEditDiagram = async () => {
     if (!editingDiagram || !inputName.trim()) return
-    await updateDiagram(editingDiagram.id, { name: inputName })
+    await updateDiagram(editingDiagram.id, { name: inputName, type: editDiagramType })
     setEditingDiagram(null)
     setInputName('')
     setEditDiagramOpen(false)
@@ -628,6 +665,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const openEditDiagramDialog = (diagram: Diagram) => {
     setEditingDiagram(diagram)
     setInputName(diagram.name)
+    setEditDiagramType(diagram.type)
     setEditDiagramOpen(true)
   }
 
@@ -924,12 +962,30 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
       <Dialog open={editDiagramOpen} onOpenChange={setEditDiagramOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>重命名图表</DialogTitle>
-            <DialogDescription>修改图表名称</DialogDescription>
+            <DialogTitle>编辑图表</DialogTitle>
+            <DialogDescription>修改图表名称和类型</DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 py-4">
-            <Label>图表名称</Label>
-            <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEditDiagram() }} placeholder="输入图表名称" />
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>图表名称</Label>
+              <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEditDiagram() }} placeholder="输入图表名称" />
+            </div>
+            <div className="space-y-2">
+              <Label>图表类型</Label>
+              <Select value={editDiagramType} onValueChange={(v) => setEditDiagramType(v as DiagramType)}>
+                <SelectTrigger><SelectValue placeholder="选择图表类型" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mermaid">Mermaid</SelectItem>
+                  <SelectItem value="html">HTML</SelectItem>
+                  <SelectItem value="svg">SVG</SelectItem>
+                  <SelectItem value="markdown">Markdown 表格</SelectItem>
+                  <SelectItem value="txt">纯文本 (TXT)</SelectItem>
+                  <SelectItem value="png">PNG</SelectItem>
+                  <SelectItem value="jpg">JPG</SelectItem>
+                  <SelectItem value="webp">WebP</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDiagramOpen(false)}>取消</Button>

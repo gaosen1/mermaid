@@ -20,3 +20,11 @@
 8. diagram-list-item 增加 tooltip 功能，鼠标悬停显示完整的 name
 
 9. 新增需求：DiagramList 的 ScrollArea，这些列表项支持目录分级，且理论上目录可无限嵌套（实际场景不会嵌套太多）
+
+10. 删除项目也替换掉原生的浏览器 modal；
+
+11. SortableDiagramItem 拖拽排序与拖入文件夹功能，当我把文件 a 拖入文件夹 A 内，在放下时就参与排序；
+
+12. 关于编辑已有 SortableDiagramItem ，除了支持重命名，应该也支持更换图表类型，比如 markdown -> txt
+
+13. DiagramTypeIcon 也配置一个 tooltip，提示当前 item 的图表类型

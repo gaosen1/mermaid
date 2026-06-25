@@ -73,6 +73,8 @@ export function ProjectList({ onSelectProject }: ProjectListProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
   const [newProjectTags, setNewProjectTags] = useState('')
@@ -107,10 +109,16 @@ export function ProjectList({ onSelectProject }: ProjectListProps) {
     setEditDialogOpen(false)
   }
 
-  const handleDelete = async (project: Project) => {
-    if (confirm(`确定要删除项目 "${project.name}" 吗？此操作不可撤销。`)) {
-      await deleteProject(project.id)
-    }
+  const openDeleteDialog = (project: Project) => {
+    setDeletingProject(project)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!deletingProject) return
+    await deleteProject(deletingProject.id)
+    setDeletingProject(null)
+    setDeleteDialogOpen(false)
   }
 
   const handleExportZip = async (project: Project) => {
@@ -311,7 +319,7 @@ export function ProjectList({ onSelectProject }: ProjectListProps) {
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           className="text-destructive"
-                          onClick={(e) => { e.stopPropagation(); handleDelete(project) }}
+                          onClick={(e) => { e.stopPropagation(); openDeleteDialog(project) }}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           删除
@@ -342,6 +350,21 @@ export function ProjectList({ onSelectProject }: ProjectListProps) {
           </div>
         )}
       </div>
+
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除项目</DialogTitle>
+            <DialogDescription>
+              确定要删除项目「{deletingProject?.name}」吗？此操作不可撤销。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>取消</Button>
+            <Button variant="destructive" onClick={confirmDelete}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent>
