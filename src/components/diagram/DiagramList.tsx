@@ -59,6 +59,7 @@ function DiagramTypeIcon({ type, className }: { type: DiagramType; className?: s
     case 'jpg':
     case 'webp': return <Image className={className} />
     case 'markdown': return <Table className={className} />
+    case 'txt': return <FileCode2 className={className} />
     default: return <FileCode2 className={className} />
   }
 }
@@ -803,6 +804,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                     <SelectItem value="html">HTML</SelectItem>
                     <SelectItem value="svg">SVG</SelectItem>
                     <SelectItem value="markdown">Markdown 表格</SelectItem>
+                    <SelectItem value="txt">纯文本 (TXT)</SelectItem>
                     <SelectItem value="png">PNG</SelectItem>
                     <SelectItem value="jpg">JPG</SelectItem>
                     <SelectItem value="webp">WebP</SelectItem>

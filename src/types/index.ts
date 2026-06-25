@@ -1,6 +1,6 @@
 import type { SyncStatus } from './sync'
 
-export type DiagramType = 'mermaid' | 'html' | 'svg' | 'png' | 'jpg' | 'webp' | 'markdown'
+export type DiagramType = 'mermaid' | 'html' | 'svg' | 'png' | 'jpg' | 'webp' | 'markdown' | 'txt'
 
 export interface Project {
   id: string

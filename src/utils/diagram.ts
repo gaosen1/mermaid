@@ -8,6 +8,7 @@ export function getDiagramFileExtension(type: DiagramType | undefined): string {
   if (type === 'webp') return 'webp'
   if (type === 'png') return 'png'
   if (type === 'markdown') return 'md'
+  if (type === 'txt') return 'txt'
   return 'mmd'
 }
 
@@ -18,11 +19,12 @@ export function getDiagramTypeLabel(type: DiagramType | undefined): string {
   if (type === 'svg') return 'SVG'
   if (type === 'html') return 'HTML'
   if (type === 'markdown') return 'Markdown'
+  if (type === 'txt') return 'TXT'
   return 'Mermaid'
 }
 
 export function getDiagramAcceptTypes(): string {
-  return '.mmd,.html,.svg,.png,.jpg,.jpeg,.webp,.md'
+  return '.mmd,.html,.svg,.png,.jpg,.jpeg,.webp,.md,.txt'
 }
 
 export function getDiagramFilename(diagram: Diagram): string {
@@ -36,6 +38,7 @@ export function getDiagramTypeFromFilename(filename: string): DiagramType | null
   if (/\.svg$/i.test(filename)) return 'svg'
   if (/\.html?$/i.test(filename)) return 'html'
   if (/\.md$/i.test(filename)) return 'markdown'
+  if (/\.txt$/i.test(filename)) return 'txt'
   if (/\.mmd$/i.test(filename)) return 'mermaid'
   return null
 }
