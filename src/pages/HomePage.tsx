@@ -5,9 +5,10 @@ import type { Project } from '@/types'
 
 interface HomePageProps {
   onSelectProject: (project: Project) => void
+  onSelectDiagramResult?: (projectId: string, diagramId: string) => void
 }
 
-export function HomePage({ onSelectProject }: HomePageProps) {
+export function HomePage({ onSelectProject, onSelectDiagramResult }: HomePageProps) {
   const { loadProjects } = useProjectStore()
 
   useEffect(() => {
@@ -16,7 +17,7 @@ export function HomePage({ onSelectProject }: HomePageProps) {
 
   return (
     <div className="h-full">
-      <ProjectList onSelectProject={onSelectProject} />
+      <ProjectList onSelectProject={onSelectProject} onSelectDiagramResult={onSelectDiagramResult} />
     </div>
   )
 }

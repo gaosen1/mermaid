@@ -149,18 +149,14 @@ function SortableDiagramItem({
   return (
     <div
       ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.4 : 1,
-        paddingLeft: depth * 12,
-      }}
-      className={`diagram-list-item flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent ${
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
+      className={`diagram-list-item flex items-center justify-between py-1 px-2 rounded-md cursor-pointer hover:bg-accent ${
         isActive ? 'bg-accent' : ''
       }`}
       onClick={(e) => onClick(e, diagram)}
     >
-      <div className="diagram-list-item-content flex items-center gap-2 overflow-hidden flex-1">
+      <div className="diagram-list-item-content flex items-center gap-1.5 overflow-hidden flex-1">
+        {depth > 0 && <span style={{ width: depth * 16 }} className="shrink-0" />}
         <div
           {...attributes}
           {...listeners}
@@ -253,21 +249,17 @@ function FolderItem({
   return (
     <div
       ref={setSortableRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.4 : 1,
-        paddingLeft: depth * 12,
-      }}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
       <div
         ref={setDropRef}
-        className={`flex items-center justify-between p-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+        className={`flex items-center justify-between py-1 px-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
           isOver ? 'ring-1 ring-primary bg-accent' : isActive ? 'bg-accent/60' : ''
         }`}
         onClick={onToggle}
       >
-        <div className="flex items-center gap-1 overflow-hidden flex-1">
+        <div className="flex items-center gap-1.5 overflow-hidden flex-1">
+          {depth > 0 && <span style={{ width: depth * 16 }} className="shrink-0" />}
           {/* 拖拽把手 */}
           <div
             {...attributes}
@@ -321,7 +313,7 @@ function FolderItem({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      {!collapsed && <div>{children}</div>}
+      {!collapsed && <div className="space-y-0.5">{children}</div>}
     </div>
   )
 }
@@ -509,15 +501,24 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const rootItemIds = getContainerItems(diagrams, folders, null).map((i) => i.id)
 
   // ── 自定义碰撞检测 ──
-  // 指针落在文件夹 drop zone 内时优先返回 folder-drop-X（触发移入）
-  // 其余情况走 closestCenter（触发排序）
+  // 指针落在文件夹 drop zone 中心区（垂直方向 25%~75%）才触发移入；
+  // 落在顶部/底部边缘区时走 closestCenter（触发排序），避免意外移入。
   const collisionDetection: CollisionDetection = (args) => {
+    const { pointerCoordinates } = args
     const folderDropContainers = args.droppableContainers.filter((c) =>
       String(c.id).startsWith('folder-drop-')
     )
-    if (folderDropContainers.length > 0) {
+    if (folderDropContainers.length > 0 && pointerCoordinates) {
       const hits = pointerWithin({ ...args, droppableContainers: folderDropContainers })
-      if (hits.length > 0) return hits
+      if (hits.length > 0) {
+        const hit = hits[0]
+        const rect = args.droppableRects.get(hit.id)
+        if (rect) {
+          const relY = (pointerCoordinates.y - rect.top) / rect.height
+          if (relY >= 0.25 && relY <= 0.75) return hits
+          // 边缘区 → 走排序逻辑
+        }
+      }
     }
     return closestCenter(args)
   }
@@ -725,6 +726,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
       window.open(url.toString(), '_blank', 'noopener,noreferrer')
       return
     }
+    setActiveFolderId(null)
     handleSelectDiagram(diagram)
   }
 
@@ -926,7 +928,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={rootItemIds} strategy={verticalListSortingStrategy}>
-              <div className="p-2 space-y-1">
+              <div className="p-2 space-y-0.5">
                 <TreeRenderer
                   nodes={tree}
                   depth={0}

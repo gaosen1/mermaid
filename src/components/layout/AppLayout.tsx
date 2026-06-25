@@ -108,6 +108,10 @@ export function AppLayout() {
     setRouteState({ view: 'project', projectId: project.id, diagramId: null })
   }, [])
 
+  const handleSelectDiagramResult = useCallback((projectId: string, diagramId: string) => {
+    setRouteState({ view: 'project', projectId, diagramId })
+  }, [])
+
   const handleBackToHome = useCallback(() => {
     setRouteState({ view: 'home', projectId: null, diagramId: null })
   }, [])
@@ -178,7 +182,7 @@ export function AppLayout() {
       </aside>
 
       <main className="flex-1 overflow-hidden">
-        {view === 'home' && <HomePage onSelectProject={handleSelectProject} />}
+        {view === 'home' && <HomePage onSelectProject={handleSelectProject} onSelectDiagramResult={handleSelectDiagramResult} />}
         {view === 'project' && selectedProjectId && (
           <ProjectPage
             projectId={selectedProjectId}

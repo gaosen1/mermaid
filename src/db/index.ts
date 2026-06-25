@@ -134,6 +134,24 @@ db.version(5)
     syncQueue: '++id, entityType, entityId, priority, createdAt',
   })
 
+// 版本 6：项目手动排序支持
+db.version(6)
+  .stores({
+    projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+    diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+    folders: 'id, projectId, parentId, name, order, updatedAt',
+    snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+    settings: 'id',
+    syncLog: '++id, timestamp, status, entityType, entityId',
+    syncQueue: '++id, entityType, entityId, priority, createdAt',
+  })
+  .upgrade(async (tx) => {
+    const projects = await tx.table('projects').orderBy('updatedAt').reverse().toArray()
+    for (let i = 0; i < projects.length; i++) {
+      await tx.table('projects').update(projects[i].id, { order: i })
+    }
+  })
+
 export { db }
 
 export const DEFAULT_SETTINGS: UserSettings = {

@@ -7,6 +7,7 @@ export interface Project {
   name: string
   description?: string
   tags: string[]
+  order?: number
   createdAt: number
   updatedAt: number
   // 同步相关字段

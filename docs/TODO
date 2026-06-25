@@ -28,3 +28,13 @@
 12. 关于编辑已有 SortableDiagramItem ，除了支持重命名，应该也支持更换图表类型，比如 markdown -> txt
 
 13. DiagramTypeIcon 也配置一个 tooltip，提示当前 item 的图表类型
+
+14. ProjectList 支持固定排序，而不是按最近访问时间排序；
+
+15. Search 支持细粒度模糊搜索，不仅搜索项目，还搜索具体的图标文件的命名
+
+16. 继续优化 SortableDiagramItem 与 folder 的拖拽排序与拖拽移入文件夹的体验：
+    - item 之间的 gap、item 内部的 padding 等保持统一，现在有肉眼可见的差异；
+    - 普通 item 与 folder item 的层级关系，应该体现在缩进上，嵌套层级越深，缩进越多；
+    - 某个 item / folder item 移入或移出 folder item 时，如果移到了 folder item 的边缘，应该判定为用户是想排序而不是改变层级
+    - 只能有一个 item 处于 active 态，不能同时存在一个 item 和 folder item 处于 active 态
