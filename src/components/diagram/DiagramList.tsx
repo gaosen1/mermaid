@@ -501,8 +501,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const rootItemIds = getContainerItems(diagrams, folders, null).map((i) => i.id)
 
   // ── 自定义碰撞检测 ──
-  // 指针落在文件夹 drop zone 中心区（垂直方向 25%~75%）才触发移入；
-  // 落在顶部/底部边缘区时走 closestCenter（触发排序），避免意外移入。
+  // 指针落在文件夹 drop zone 的中心区才触发移入；落在顶部/底部固定像素的边缘区
+  // 时走 closestCenter（触发排序）。用固定像素而非百分比，避免行高较矮时中心
+  // 命中区域过窄导致难以触发移入。
+  const FOLDER_DROP_EDGE_PX = 6
+
   const collisionDetection: CollisionDetection = (args) => {
     const { pointerCoordinates } = args
     const folderDropContainers = args.droppableContainers.filter((c) =>
@@ -514,8 +517,9 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         const hit = hits[0]
         const rect = args.droppableRects.get(hit.id)
         if (rect) {
-          const relY = (pointerCoordinates.y - rect.top) / rect.height
-          if (relY >= 0.25 && relY <= 0.75) return hits
+          const offsetY = pointerCoordinates.y - rect.top
+          const edge = Math.min(FOLDER_DROP_EDGE_PX, rect.height / 3)
+          if (offsetY >= edge && offsetY <= rect.height - edge) return hits
           // 边缘区 → 走排序逻辑
         }
       }
