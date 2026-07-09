@@ -70,7 +70,7 @@ export async function calculateDiagramChecksum(diagram: Diagram): Promise<string
   const coreData = {
     id: diagram.id,
     projectId: diagram.projectId,
-    folderId: diagram.folderId,
+    folderId: diagram.folderId ?? null,
     name: diagram.name,
     type: diagram.type,
     source: diagram.source,
@@ -89,9 +89,9 @@ export async function calculateFolderChecksum(folder: DiagramFolder): Promise<st
   const coreData = {
     id: folder.id,
     projectId: folder.projectId,
-    parentId: folder.parentId,
+    parentId: folder.parentId ?? null,
     name: folder.name,
-    order: folder.order,
+    order: folder.order ?? 0,
     createdAt: folder.createdAt,
     updatedAt: folder.updatedAt,
   }
@@ -111,6 +111,52 @@ export async function calculateSnapshotChecksum(snapshot: Snapshot): Promise<str
     isAuto: snapshot.isAuto,
   }
   return calculateChecksum(JSON.stringify(coreData))
+}
+
+/**
+ * 三路合并决策（git 三方合并模型）
+ *
+ * base      = 上次同步成功时的内容标识（共同祖先）
+ * localNow  = 当前本地内容标识
+ * remoteNow = 当前云端内容标识
+ *
+ * 返回：
+ * - unchanged  两边都没动
+ * - push       仅本地改动 -> 推送
+ * - pull       仅云端改动 -> 拉取
+ * - conflict   双改且内容不一致 -> 需按合并策略处理
+ */
+export type ThreeWayDecision = 'unchanged' | 'push' | 'pull' | 'conflict'
+
+export function threeWayDecision(
+  base: string | undefined,
+  localNow: string | undefined,
+  remoteNow: string | undefined
+): ThreeWayDecision {
+  const localChanged = localNow !== base
+  const remoteChanged = remoteNow !== base
+
+  if (!localChanged && !remoteChanged) return 'unchanged'
+  if (localChanged && !remoteChanged) return 'push'
+  if (!localChanged && remoteChanged) return 'pull'
+
+  // 双改：内容一致视为已对齐，否则冲突
+  if (localNow === remoteNow) return 'unchanged'
+  return 'conflict'
+}
+
+/**
+ * 当本地与远端使用不同的变更标识（如本地用 SHA-256 checksum、
+ * 远端用 git blob SHA）时，直接用「是否变化」两个布尔量判定。
+ */
+export function decideFromFlags(
+  localChanged: boolean,
+  remoteChanged: boolean
+): ThreeWayDecision {
+  if (!localChanged && !remoteChanged) return 'unchanged'
+  if (localChanged && !remoteChanged) return 'push'
+  if (!localChanged && remoteChanged) return 'pull'
+  return 'conflict'
 }
 
 /**

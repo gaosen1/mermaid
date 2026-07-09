@@ -25,29 +25,76 @@ import {
   XCircle,
   FolderSync,
   FileText,
-  Image,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { SyncQueueItem, SyncLogEntry } from '@/types/sync'
-import { clearFailed, retryFailed, clearAll as clearQueue } from '@/services/sync/syncQueue'
+import type { SyncLogEntry } from '@/types/sync'
 
 interface SyncQueuePanelProps {
   className?: string
 }
 
+// 待推送的本地变更（由本地实体状态推导，而非独立队列表）
+interface PendingChange {
+  entityType: 'project' | 'diagram'
+  entityId: string
+  name: string
+  operation: 'create' | 'update'
+  status: 'pending' | 'conflict' | 'error'
+  updatedAt: number
+}
+
 export function SyncQueuePanel({ className }: SyncQueuePanelProps) {
-  const { isAuthenticated, refreshStats } = useSyncStore()
-  const [queueItems, setQueueItems] = useState<SyncQueueItem[]>([])
+  const { isAuthenticated, isSyncing, pushNow, refreshStats } = useSyncStore()
+  const [pendingChanges, setPendingChanges] = useState<PendingChange[]>([])
   const [logEntries, setLogEntries] = useState<SyncLogEntry[]>([])
   const [activeTab, setActiveTab] = useState('queue')
 
-  // 加载队列和日志数据
+  // 计算「待推送变更」：自上次同步后被修改、或处于冲突/错误状态的实体
   const loadData = async () => {
-    const [queue, logs] = await Promise.all([
-      db.syncQueue.orderBy('priority').toArray(),
-      db.syncLog.orderBy('timestamp').reverse().limit(50).toArray(),
+    const [projects, diagrams, logs] = await Promise.all([
+      db.projects.toArray(),
+      db.diagrams.toArray(),
+      db.syncLog.orderBy('timestamp').reverse().limit(100).toArray(),
     ])
-    setQueueItems(queue)
+
+    const changes: PendingChange[] = []
+
+    const isDirty = (e: { syncStatus?: string; lastSyncTime?: number; updatedAt: number }) =>
+      e.syncStatus === 'conflict' ||
+      e.syncStatus === 'error' ||
+      !e.lastSyncTime ||
+      e.updatedAt > e.lastSyncTime
+
+    for (const p of projects) {
+      if (isDirty(p)) {
+        changes.push({
+          entityType: 'project',
+          entityId: p.id,
+          name: p.name || '未命名项目',
+          operation: p.lastSyncTime ? 'update' : 'create',
+          status: p.syncStatus === 'conflict' ? 'conflict' : p.syncStatus === 'error' ? 'error' : 'pending',
+          updatedAt: p.updatedAt,
+        })
+      }
+    }
+    for (const d of diagrams) {
+      if (isDirty(d)) {
+        changes.push({
+          entityType: 'diagram',
+          entityId: d.id,
+          name: d.name || '未命名图表',
+          operation: d.lastSyncTime ? 'update' : 'create',
+          status: d.syncStatus === 'conflict' ? 'conflict' : d.syncStatus === 'error' ? 'error' : 'pending',
+          updatedAt: d.updatedAt,
+        })
+      }
+    }
+
+    // 冲突/错误优先，其次按更新时间倒序
+    const rank = { conflict: 0, error: 1, pending: 2 }
+    changes.sort((a, b) => rank[a.status] - rank[b.status] || b.updatedAt - a.updatedAt)
+
+    setPendingChanges(changes)
     setLogEntries(logs)
   }
 
@@ -62,10 +109,6 @@ export function SyncQueuePanel({ className }: SyncQueuePanelProps) {
     switch (entityType) {
       case 'project':
         return <FolderSync className="h-4 w-4" />
-      case 'diagram':
-        return <FileText className="h-4 w-4" />
-      case 'snapshot':
-        return <Image className="h-4 w-4" />
       default:
         return <FileText className="h-4 w-4" />
     }
@@ -121,27 +164,11 @@ export function SyncQueuePanel({ className }: SyncQueuePanelProps) {
     }
   }
 
-  // 清除失败项
-  const handleClearFailed = async () => {
-    await clearFailed()
+  // 推送全部待同步变更
+  const handlePushAll = async () => {
+    await pushNow()
     await loadData()
     await refreshStats()
-  }
-
-  // 重试失败项
-  const handleRetryFailed = async () => {
-    await retryFailed()
-    await loadData()
-    await refreshStats()
-  }
-
-  // 清空队列
-  const handleClearQueue = async () => {
-    if (confirm('确定要清空同步队列吗？')) {
-      await clearQueue()
-      await loadData()
-      await refreshStats()
-    }
   }
 
   // 清空日志
@@ -152,8 +179,8 @@ export function SyncQueuePanel({ className }: SyncQueuePanelProps) {
     }
   }
 
-  // 统计失败项数量
-  const failedCount = queueItems.filter((item) => item.retryCount >= item.maxRetries).length
+  // 统计冲突项数量
+  const conflictCount = pendingChanges.filter((item) => item.status === 'conflict').length
 
   return (
     <Card className={className}>
@@ -170,10 +197,10 @@ export function SyncQueuePanel({ className }: SyncQueuePanelProps) {
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="queue" className="gap-2">
               <Clock className="h-4 w-4" />
-              队列
-              {queueItems.length > 0 && (
+              待同步
+              {pendingChanges.length > 0 && (
                 <Badge variant="secondary" className="ml-1">
-                  {queueItems.length}
+                  {pendingChanges.length}
                 </Badge>
               )}
             </TabsTrigger>
@@ -184,72 +211,69 @@ export function SyncQueuePanel({ className }: SyncQueuePanelProps) {
           </TabsList>
 
           <TabsContent value="queue" className="mt-4 space-y-4">
-            {/* 队列操作按钮 */}
-            {queueItems.length > 0 && (
-              <div className="flex gap-2">
-                {failedCount > 0 && (
-                  <>
-                    <Button variant="outline" size="sm" onClick={handleRetryFailed}>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      重试失败 ({failedCount})
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleClearFailed}>
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      清除失败
-                    </Button>
-                  </>
-                )}
-                <Button variant="ghost" size="sm" onClick={handleClearQueue}>
-                  清空队列
+            {/* 操作按钮 */}
+            {pendingChanges.length > 0 && isAuthenticated && (
+              <div className="flex items-center gap-2">
+                <Button variant="default" size="sm" onClick={handlePushAll} disabled={isSyncing}>
+                  <Upload className={cn('h-4 w-4 mr-2', isSyncing && 'animate-pulse')} />
+                  推送全部（{pendingChanges.length}）
                 </Button>
+                {conflictCount > 0 && (
+                  <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    {conflictCount} 个冲突
+                  </Badge>
+                )}
               </div>
             )}
 
-            {/* 队列列表 */}
+            {/* 待同步列表 */}
             <ScrollArea className="h-[300px]">
-              {queueItems.length === 0 ? (
+              {pendingChanges.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <CheckCircle2 className="h-8 w-8 mb-2" />
-                  <p className="text-sm">队列为空</p>
+                  <p className="text-sm">没有待同步的变更</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {queueItems.map((item) => (
+                  {pendingChanges.map((item) => (
                     <div
-                      key={item.id}
+                      key={`${item.entityType}-${item.entityId}`}
                       className={cn(
                         'flex items-center justify-between p-3 rounded-lg border',
-                        item.retryCount >= item.maxRetries
-                          ? 'border-destructive/50 bg-destructive/5'
-                          : 'border-border'
+                        item.status === 'conflict'
+                          ? 'border-yellow-500/50 bg-yellow-500/5'
+                          : item.status === 'error'
+                            ? 'border-destructive/50 bg-destructive/5'
+                            : 'border-border'
                       )}
                     >
                       <div className="flex items-center gap-3">
                         {getEntityIcon(item.entityType)}
                         <div>
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium capitalize">
-                              {item.entityType}
+                            <span className="text-sm font-medium truncate max-w-[160px]">
+                              {item.name}
                             </span>
                             <Badge variant="outline" className="text-xs">
                               {getOperationIcon(item.operation)}
-                              <span className="ml-1">{item.operation}</span>
+                              <span className="ml-1">
+                                {item.operation === 'create' ? '新增' : '更新'}
+                              </span>
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
-                            {item.entityId}
+                          <p className="text-xs text-muted-foreground">
+                            {item.entityType === 'project' ? '项目' : '图表'} · {formatTime(item.updatedAt)}
                           </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        {item.retryCount > 0 && (
-                          <Badge
-                            variant={item.retryCount >= item.maxRetries ? 'destructive' : 'secondary'}
-                          >
-                            重试 {item.retryCount}/{item.maxRetries}
+                        {item.status === 'conflict' && (
+                          <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                            冲突
                           </Badge>
                         )}
-                        {item.error && (
+                        {item.status === 'error' && (
                           <AlertCircle className="h-4 w-4 text-destructive" />
                         )}
                       </div>

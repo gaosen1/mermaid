@@ -3,8 +3,8 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { db } from '@/db'
 import { validateToken, initializeRepo, clearGitHubClient } from '@/services/github'
 import { getStoredToken, storeToken, clearToken } from '@/utils/tokenStorage'
-import { syncAll, startAutoSync, stopAutoSync, type SyncResult } from '@/services/sync'
-import type { SyncSettings, SyncStats } from '@/types/sync'
+import { pull, push, sync, startAutoSync, stopAutoSync, type SyncResult } from '@/services/sync'
+import type { SyncSettings, SyncStats, SyncProgress, SyncDirection } from '@/types/sync'
 
 interface SyncState {
   // 认证状态
@@ -15,6 +15,7 @@ interface SyncState {
 
   // 同步状态
   isSyncing: boolean
+  syncProgress: SyncProgress | null
   lastSyncTime: number | null
   syncError: string | null
 
@@ -28,7 +29,10 @@ interface SyncState {
   initialize: () => Promise<void>
   connect: (token: string) => Promise<void>
   disconnect: () => Promise<void>
+  runSync: (direction: SyncDirection) => Promise<SyncResult>
   syncNow: () => Promise<SyncResult>
+  pullNow: () => Promise<SyncResult>
+  pushNow: () => Promise<SyncResult>
   updateSettings: (settings: Partial<SyncSettings>) => void
   refreshStats: () => Promise<void>
   clearError: () => void
@@ -37,16 +41,29 @@ interface SyncState {
 const DEFAULT_SYNC_SETTINGS: SyncSettings = {
   autoSync: false,
   syncInterval: 5 * 60 * 1000, // 5 分钟
-  conflictStrategy: 'ask',
+  mergeStrategy: 'manual',
   repoName: 'mermaid-diagrams-backup',
 }
 
-// 从 localStorage 加载设置
+// 旧版 conflictStrategy -> 新版 mergeStrategy 映射
+const LEGACY_STRATEGY_MAP: Record<string, SyncSettings['mergeStrategy']> = {
+  local: 'ours',
+  remote: 'theirs',
+  ask: 'manual',
+}
+
+// 从 localStorage 加载设置（含旧配置迁移）
 function loadSyncSettings(): SyncSettings {
   try {
     const stored = localStorage.getItem('sync_settings')
     if (stored) {
-      return { ...DEFAULT_SYNC_SETTINGS, ...JSON.parse(stored) }
+      const parsed = JSON.parse(stored) as Partial<SyncSettings> & { conflictStrategy?: string }
+      // 迁移旧字段
+      if (!parsed.mergeStrategy && parsed.conflictStrategy) {
+        parsed.mergeStrategy = LEGACY_STRATEGY_MAP[parsed.conflictStrategy] ?? 'manual'
+      }
+      delete parsed.conflictStrategy
+      return { ...DEFAULT_SYNC_SETTINGS, ...parsed }
     }
   } catch {
     // ignore
@@ -62,6 +79,7 @@ export const useSyncStore = create<SyncState>()(
     userName: null,
     userLogin: null,
     isSyncing: false,
+    syncProgress: null,
     lastSyncTime: null,
     syncError: null,
     stats: {
@@ -149,62 +167,56 @@ export const useSyncStore = create<SyncState>()(
     },
 
     /**
-     * 立即同步
+     * 执行一次同步操作（pull / push / sync 通用）
      */
-    syncNow: async () => {
+    runSync: async (direction: SyncDirection): Promise<SyncResult> => {
       const { isAuthenticated, isSyncing, settings } = get()
 
       if (!isAuthenticated) {
-        return {
-          success: false,
-          pushed: 0,
-          pulled: 0,
-          conflicts: 0,
-          errors: ['Not authenticated'],
-        }
+        return { success: false, pushed: 0, pulled: 0, conflicts: 0, errors: ['Not authenticated'] }
       }
-
       if (isSyncing) {
-        return {
-          success: false,
-          pushed: 0,
-          pulled: 0,
-          conflicts: 0,
-          errors: ['Sync already in progress'],
-        }
+        return { success: false, pushed: 0, pulled: 0, conflicts: 0, errors: ['Sync already in progress'] }
       }
 
-      set({ isSyncing: true, syncError: null })
+      set({ isSyncing: true, syncError: null, syncProgress: null })
+
+      const onProgress = (progress: SyncProgress) => set({ syncProgress: progress })
+      const op = direction === 'pull' ? pull : direction === 'push' ? push : sync
 
       try {
-        const result = await syncAll(settings)
+        const result = await op(settings, onProgress)
 
         set({
           isSyncing: false,
+          syncProgress: null,
           lastSyncTime: Date.now(),
           syncError: result.success ? null : result.errors.join(', '),
         })
 
-        // 刷新统计
         await get().refreshStats()
-
         return result
       } catch (error) {
         const errorMessage = (error as Error).message || 'Sync failed'
-        set({
-          isSyncing: false,
-          syncError: errorMessage,
-        })
-
-        return {
-          success: false,
-          pushed: 0,
-          pulled: 0,
-          conflicts: 0,
-          errors: [errorMessage],
-        }
+        set({ isSyncing: false, syncProgress: null, syncError: errorMessage })
+        return { success: false, pushed: 0, pulled: 0, conflicts: 0, errors: [errorMessage] }
       }
     },
+
+    /**
+     * 立即同步（先拉后推）
+     */
+    syncNow: () => get().runSync('sync'),
+
+    /**
+     * 仅拉取云端
+     */
+    pullNow: () => get().runSync('pull'),
+
+    /**
+     * 仅推送本地
+     */
+    pushNow: () => get().runSync('push'),
 
     /**
      * 更新设置

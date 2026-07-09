@@ -83,12 +83,12 @@ export function AppLayout() {
     initSync()
   }, [initSync, loadProjects, loadSettings])
 
-  // 当有冲突且策略为 ask 时，自动打开冲突对话框
+  // 当有冲突且策略为手动时，自动打开冲突对话框
   useEffect(() => {
-    if (stats.conflictItems > 0 && syncSettings.conflictStrategy === 'ask') {
+    if (stats.conflictItems > 0 && syncSettings.mergeStrategy === 'manual') {
       setConflictDialogOpen(true)
     }
-  }, [stats.conflictItems, syncSettings.conflictStrategy])
+  }, [stats.conflictItems, syncSettings.mergeStrategy])
 
   useEffect(() => {
     const root = window.document.documentElement

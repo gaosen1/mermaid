@@ -15,6 +15,8 @@ export interface Project {
   lastSyncTime?: number
   remoteChecksum?: string
   localChecksum?: string
+  // 上次同步时远端文件的 git blob SHA，用于免下载检测远端变更
+  remoteSha?: string
   syncError?: string
 }
 
@@ -50,6 +52,8 @@ export interface Diagram {
   lastSyncTime?: number
   remoteChecksum?: string
   localChecksum?: string
+  // 上次同步时远端文件的 git blob SHA，用于免下载检测远端变更
+  remoteSha?: string
   syncError?: string
 }
 

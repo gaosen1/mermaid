@@ -20,6 +20,8 @@ import {
   Loader2,
   FolderSync,
   FileText,
+  Download,
+  Upload,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -33,11 +35,14 @@ export function SyncStatusPanel({ className, compact = false }: SyncStatusPanelP
     isAuthenticated,
     isConnecting,
     isSyncing,
+    syncProgress,
     userLogin,
     lastSyncTime,
     syncError,
     stats,
     syncNow,
+    pullNow,
+    pushNow,
     refreshStats,
   } = useSyncStore()
 
@@ -81,17 +86,32 @@ export function SyncStatusPanel({ className, compact = false }: SyncStatusPanelP
     }
   }, [isAuthenticated, refreshStats])
 
-  // 计算同步进度
+  // 静态同步比例（未同步时展示已同步占比）
   const totalItems = stats.totalProjects + stats.totalDiagrams
   const syncedItems = stats.syncedProjects + stats.syncedDiagrams
-  const syncProgress = totalItems > 0 ? (syncedItems / totalItems) * 100 : 0
+  const syncedRatio = totalItems > 0 ? (syncedItems / totalItems) * 100 : 0
+
+  // 实时进度（同步进行中）
+  const PHASE_LABELS: Record<string, string> = {
+    detecting: '检测差异',
+    pulling: '拉取中',
+    pushing: '推送中',
+    resolving: '解决冲突',
+    idle: '完成',
+  }
+  const liveActive = isSyncing && !!syncProgress
+  const livePercent =
+    syncProgress && syncProgress.total > 0
+      ? Math.round((syncProgress.completed / syncProgress.total) * 100)
+      : 0
+  const displayPercent = liveActive ? livePercent : Math.round(syncedRatio)
 
   // 获取状态颜色
   const getStatusColor = () => {
     if (!isAuthenticated) return 'text-muted-foreground'
     if (syncError || stats.errorItems > 0) return 'text-destructive'
     if (stats.conflictItems > 0) return 'text-yellow-500'
-    if (syncProgress === 100) return 'text-green-500'
+    if (syncedRatio === 100) return 'text-green-500'
     return 'text-blue-500'
   }
 
@@ -120,7 +140,7 @@ export function SyncStatusPanel({ className, compact = false }: SyncStatusPanelP
     if (syncError) return '同步错误'
     if (stats.errorItems > 0) return `${stats.errorItems} 个错误`
     if (stats.conflictItems > 0) return `${stats.conflictItems} 个冲突`
-    if (syncProgress === 100) return '已同步'
+    if (syncedRatio === 100) return '已同步'
     return '部分同步'
   }
 
@@ -132,14 +152,17 @@ export function SyncStatusPanel({ className, compact = false }: SyncStatusPanelP
           <span className="text-sm font-medium">{getStatusText()}</span>
         </div>
         {isAuthenticated && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => syncNow()}
-            disabled={isSyncing}
-          >
-            <RefreshCw className={cn('h-4 w-4', isSyncing && 'animate-spin')} />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => pullNow()} disabled={isSyncing} title="拉取云端">
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => pushNow()} disabled={isSyncing} title="推送本地">
+              <Upload className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => syncNow()} disabled={isSyncing} title="同步（先拉后推）">
+              <RefreshCw className={cn('h-4 w-4', isSyncing && 'animate-spin')} />
+            </Button>
+          </div>
         )}
       </div>
     )
@@ -154,15 +177,20 @@ export function SyncStatusPanel({ className, compact = false }: SyncStatusPanelP
             <CardTitle className="text-base">同步状态</CardTitle>
           </div>
           {isAuthenticated && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => syncNow()}
-              disabled={isSyncing}
-            >
-              <RefreshCw className={cn('h-4 w-4 mr-2', isSyncing && 'animate-spin')} />
-              {isSyncing ? '同步中...' : '立即同步'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => pullNow()} disabled={isSyncing}>
+                <Download className="h-4 w-4 mr-1.5" />
+                拉取
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => pushNow()} disabled={isSyncing}>
+                <Upload className="h-4 w-4 mr-1.5" />
+                推送
+              </Button>
+              <Button variant="default" size="sm" onClick={() => syncNow()} disabled={isSyncing}>
+                <RefreshCw className={cn('h-4 w-4 mr-1.5', isSyncing && 'animate-spin')} />
+                {isSyncing ? '同步中' : '同步'}
+              </Button>
+            </div>
           )}
         </div>
         <CardDescription>
@@ -196,10 +224,20 @@ export function SyncStatusPanel({ className, compact = false }: SyncStatusPanelP
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">同步进度</span>
-                <span className="font-medium">{Math.round(syncProgress)}%</span>
+                <span className="text-muted-foreground">
+                  {liveActive
+                    ? `${PHASE_LABELS[syncProgress!.phase] || '同步中'}${
+                        syncProgress!.current ? ` · ${syncProgress!.current}` : ''
+                      }`
+                    : '同步进度'}
+                </span>
+                <span className="font-medium">
+                  {liveActive && syncProgress!.total > 0
+                    ? `${syncProgress!.completed}/${syncProgress!.total}`
+                    : `${displayPercent}%`}
+                </span>
               </div>
-              <Progress value={syncProgress} className="h-2" />
+              <Progress value={displayPercent} className="h-2" />
             </div>
 
             {/* 统计数据 */}

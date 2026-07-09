@@ -35,11 +35,31 @@ export interface SyncQueueItem {
   error?: string
 }
 
+// 合并策略（git 语义）
+// ours   -> 保留本地   theirs -> 使用云端
+// manual -> 手动逐条选  newest -> 按 updatedAt 取新
+export type MergeStrategy = 'ours' | 'theirs' | 'manual' | 'newest'
+
+// 同步方向
+export type SyncDirection = 'pull' | 'push' | 'sync'
+
+// 同步阶段
+export type SyncPhase = 'idle' | 'detecting' | 'pulling' | 'pushing' | 'resolving'
+
+// 实时同步进度
+export interface SyncProgress {
+  direction: SyncDirection
+  phase: SyncPhase
+  total: number
+  completed: number
+  current?: string
+}
+
 // 同步设置
 export interface SyncSettings {
   autoSync: boolean
   syncInterval: number
-  conflictStrategy: 'local' | 'remote' | 'ask'
+  mergeStrategy: MergeStrategy
   repoName: string
 }
 

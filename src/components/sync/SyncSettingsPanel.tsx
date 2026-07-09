@@ -36,12 +36,13 @@ export function SyncSettingsPanel({ className }: SyncSettingsPanelProps) {
     { value: '1800000', label: '30 分钟' },
   ]
 
-  // 冲突策略选项
-  const conflictOptions = [
-    { value: 'ask', label: '询问', description: '每次冲突时询问用户' },
-    { value: 'local', label: '保留本地', description: '始终使用本地版本' },
-    { value: 'remote', label: '使用云端', description: '始终使用云端版本' },
-  ]
+  // 合并策略选项（git 语义：双端都改动时如何取舍）
+  const mergeOptions = [
+    { value: 'manual', label: '手动选择', description: '冲突时逐条弹窗，由你决定' },
+    { value: 'ours', label: '保留本地', description: '冲突时始终使用本地版本' },
+    { value: 'theirs', label: '使用云端', description: '冲突时始终使用云端版本' },
+    { value: 'newest', label: '最近更新优先', description: '冲突时按更新时间取较新的一方' },
+  ] as const
 
   return (
     <Card className={className}>
@@ -105,29 +106,29 @@ export function SyncSettingsPanel({ className }: SyncSettingsPanelProps) {
 
         <Separator />
 
-        {/* 冲突策略 */}
+        {/* 合并策略 */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-            <Label className="text-sm font-medium">冲突策略</Label>
+            <Label className="text-sm font-medium">合并策略</Label>
           </div>
           <p className="text-xs text-muted-foreground">
-            当本地和云端数据发生冲突时的处理方式
+            当本地和云端「同一项都改动」时的取舍方式（仅冲突时生效）
           </p>
           <div className="grid gap-2">
-            {conflictOptions.map((option) => (
+            {mergeOptions.map((option) => (
               <div
                 key={option.value}
                 className={cn(
                   'flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors',
-                  settings.conflictStrategy === option.value
+                  settings.mergeStrategy === option.value
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:bg-muted/50',
                   !isAuthenticated && 'opacity-50 cursor-not-allowed'
                 )}
                 onClick={() => {
                   if (isAuthenticated) {
-                    updateSettings({ conflictStrategy: option.value as 'local' | 'remote' | 'ask' })
+                    updateSettings({ mergeStrategy: option.value })
                   }
                 }}
               >
@@ -138,7 +139,7 @@ export function SyncSettingsPanel({ className }: SyncSettingsPanelProps) {
                 <div
                   className={cn(
                     'w-4 h-4 rounded-full border-2 transition-colors',
-                    settings.conflictStrategy === option.value
+                    settings.mergeStrategy === option.value
                       ? 'border-primary bg-primary'
                       : 'border-muted-foreground'
                   )}

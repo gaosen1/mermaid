@@ -96,24 +96,42 @@ export async function putFileBase64(
     }
   }
 
-  try {
-    let fileSha = sha
-    if (!fileSha) {
+  // GitHub Contents API 存在写后读延迟（CDN 缓存），紧接着的 getFile 可能返回
+  // 过期 SHA，导致 409/422。这里采用「多次重试 + 指数退避 + 每次重新取 SHA」策略，
+  // 从根本上兜住 SHA 竞争。
+  const MAX_ATTEMPTS = 4
+  const BACKOFF_MS = [250, 500, 1000]
+
+  let fileSha = sha
+  if (!fileSha) {
+    const existing = await getFile(path)
+    fileSha = existing?.sha
+  }
+
+  let lastError: unknown
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      return await attemptPut(fileSha)
+    } catch (error) {
+      lastError = error
+      const err = error as { status?: number }
+      // 409 Conflict / 422 Unprocessable 都可能表示 SHA 过期
+      const isShaConflict = err.status === 409 || err.status === 422
+      if (!isShaConflict || attempt === MAX_ATTEMPTS - 1) {
+        break
+      }
+      // 退避后重新拉取最新 SHA 再试
+      await delay(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)])
       const existing = await getFile(path)
       fileSha = existing?.sha
     }
-
-
-    return await attemptPut(fileSha)
-  } catch (error) {
-    const err = error as { status?: number }
-    if (err.status === 409) {
-      // SHA 过期，重新获取最新 SHA 后重试一次
-      const existing = await getFile(path)
-      return await attemptPut(existing?.sha)
-    }
-    throw new GitHubFileError(`Failed to put file: ${path}`, error as Error)
   }
+
+  throw new GitHubFileError(`Failed to put file: ${path}`, lastError as Error)
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**

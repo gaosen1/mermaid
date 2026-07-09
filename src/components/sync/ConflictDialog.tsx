@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Project, Diagram } from '@/types'
-import { resolveConflict, type ConflictInfo } from '@/services/sync/conflictResolver'
+import { resolveProjectConflict, resolveDiagramConflict } from '@/services/sync/syncEngine'
 
 interface ConflictDialogProps {
   open: boolean
@@ -91,36 +91,22 @@ export function ConflictDialog({ open, onOpenChange }: ConflictDialogProps) {
   // 获取当前选中的冲突
   const currentConflict = conflicts[selectedIndex]
 
+  // 应用单个冲突的解决结果（真正落地到云端/本地）
+  const applyResolution = async (conflict: ConflictItem, keepVersion: 'local' | 'remote') => {
+    if (conflict.entityType === 'project') {
+      await resolveProjectConflict(conflict.entityId, keepVersion)
+    } else {
+      await resolveDiagramConflict(conflict.entityId, keepVersion)
+    }
+  }
+
   // 解决单个冲突
   const handleResolve = async (keepVersion: 'local' | 'remote') => {
     if (!currentConflict) return
 
     setIsResolving(true)
     try {
-      const conflictInfo: ConflictInfo = {
-        entityType: currentConflict.entityType,
-        entityId: currentConflict.entityId,
-        local: currentConflict.localData,
-        remote: currentConflict.remoteData || currentConflict.localData,
-        localChecksum: currentConflict.localChecksum || '',
-        remoteChecksum: currentConflict.remoteChecksum || '',
-        detectedAt: Date.now(),
-      }
-
-      await resolveConflict(conflictInfo, keepVersion)
-
-      // 更新本地数据库状态
-      if (currentConflict.entityType === 'project') {
-        await db.projects.update(currentConflict.entityId, {
-          syncStatus: 'pending',
-          syncError: undefined,
-        })
-      } else {
-        await db.diagrams.update(currentConflict.entityId, {
-          syncStatus: 'pending',
-          syncError: undefined,
-        })
-      }
+      await applyResolution(currentConflict, keepVersion)
 
       setResolvedCount((prev) => prev + 1)
 
@@ -149,29 +135,7 @@ export function ConflictDialog({ open, onOpenChange }: ConflictDialogProps) {
     setIsResolving(true)
     try {
       for (const conflict of conflicts) {
-        const conflictInfo: ConflictInfo = {
-          entityType: conflict.entityType,
-          entityId: conflict.entityId,
-          local: conflict.localData,
-          remote: conflict.remoteData || conflict.localData,
-          localChecksum: conflict.localChecksum || '',
-          remoteChecksum: conflict.remoteChecksum || '',
-          detectedAt: Date.now(),
-        }
-
-        await resolveConflict(conflictInfo, keepVersion)
-
-        if (conflict.entityType === 'project') {
-          await db.projects.update(conflict.entityId, {
-            syncStatus: 'pending',
-            syncError: undefined,
-          })
-        } else {
-          await db.diagrams.update(conflict.entityId, {
-            syncStatus: 'pending',
-            syncError: undefined,
-          })
-        }
+        await applyResolution(conflict, keepVersion)
       }
 
       await refreshStats()

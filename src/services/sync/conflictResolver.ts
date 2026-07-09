@@ -5,10 +5,8 @@
 
 import { db } from '@/db'
 import type { Project, Diagram } from '@/types'
-import type { SyncLogEntry } from '@/types/sync'
+import type { SyncLogEntry, MergeStrategy } from '@/types/sync'
 import type { DiffResult, EntityType } from './dataSync'
-
-export type ConflictStrategy = 'local' | 'remote' | 'ask'
 
 export interface ConflictInfo<T = unknown> {
   entityType: EntityType
@@ -23,9 +21,31 @@ export interface ConflictInfo<T = unknown> {
 export interface ConflictResolution {
   entityType: EntityType
   entityId: string
-  strategy: ConflictStrategy
+  strategy: MergeStrategy
   resolvedAt: number
   keepVersion: 'local' | 'remote'
+}
+
+/**
+ * 判断在给定合并策略下应保留哪一侧。
+ * manual 策略无法自动决定，返回 null，交由 UI 逐条处理。
+ */
+export function decideKeepVersion<T extends { updatedAt?: number }>(
+  strategy: MergeStrategy,
+  local: T,
+  remote: T
+): 'local' | 'remote' | null {
+  switch (strategy) {
+    case 'ours':
+      return 'local'
+    case 'theirs':
+      return 'remote'
+    case 'newest':
+      return (local.updatedAt ?? 0) >= (remote.updatedAt ?? 0) ? 'local' : 'remote'
+    case 'manual':
+    default:
+      return null
+  }
 }
 
 /**
@@ -55,14 +75,14 @@ export function createConflictInfo<T>(diff: DiffResult<T>): ConflictInfo<T> | nu
 }
 
 /**
- * 根据策略自动解决冲突
+ * 记录一次冲突解决（保留某一侧），并返回解决结果。
+ * keepVersion 由调用方（自动策略或用户手动）给出。
  */
 export async function resolveConflict<T>(
   conflict: ConflictInfo<T>,
-  strategy: ConflictStrategy
+  keepVersion: 'local' | 'remote',
+  strategy: MergeStrategy = 'manual'
 ): Promise<ConflictResolution> {
-  const keepVersion = strategy === 'local' ? 'local' : 'remote'
-
   // 记录冲突解决日志
   await logConflictResolution(conflict, keepVersion)
 
