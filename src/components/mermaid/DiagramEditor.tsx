@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useFolderStore } from '@/stores/folderStore'
 import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText } from 'lucide-react'
 import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import {
@@ -32,6 +33,8 @@ import {
   type NodeShape,
   type SubgraphStyle,
 } from '@/utils/nodeDsl'
+import { getFolderPath } from '@/utils/folder'
+import { getDiagramFilename } from '@/utils/diagram'
 import type { SelectedEdge } from './useEdgeSelection'
 import type { SelectedNode } from './useNodeSelection'
 import type { LayoutType } from '@/types'
@@ -70,6 +73,11 @@ interface DiagramEditorProps {
 export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = false }: DiagramEditorProps) {
   const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
   const { settings } = useSettingsStore()
+  const { folders } = useFolderStore()
+
+  const relativePath = currentDiagram
+    ? [...getFolderPath(currentDiagram.folderId, folders), getDiagramFilename(currentDiagram)].join(' / ')
+    : ''
 
   const [editorState, setEditorState] = useState({
     source: '',
@@ -420,14 +428,14 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const editorBottom = 12
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="diagram-editor-root relative h-full w-full overflow-hidden">
       {/* 全屏画布层 - 底层 */}
       <MermaidRenderer
         ref={rendererRef}
         source={source}
         layout={layout}
         theme={isDarkMode ? 'dark' : theme}
-        className="absolute inset-0"
+        className="diagram-editor-canvas absolute inset-0"
         showControls={true}
         edgeSelectionEnabled={true}
         nodeSelectionEnabled={true}
@@ -440,6 +448,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
       {/* 浮层编辑器面板 - 左侧悬浮，紧靠侧边栏 */}
       <div
         className={`
+          diagram-editor-panel
           absolute z-20
           flex flex-col
           bg-background/95 backdrop-blur-md
@@ -457,7 +466,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         onMouseLeave={() => setIsPanelHovered(false)}
       >
         {/* 面板头部 */}
-        <div className="flex items-center justify-between p-3 border-b shrink-0">
+        <div className="diagram-editor-header flex items-center justify-between p-3 border-b shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-sm font-semibold truncate">{currentDiagram.name}</h2>
             {hasChanges && (
@@ -471,8 +480,16 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
           </div>
         </div>
 
+        {/* 文件相对路径 */}
+        <div
+          className="diagram-editor-path px-3 py-1 border-b shrink-0 text-xs text-muted-foreground truncate"
+          title={relativePath}
+        >
+          {relativePath}
+        </div>
+
         {/* 工具栏 */}
-        <div className="flex items-center gap-2 p-2 border-b shrink-0 flex-wrap">
+        <div className="diagram-editor-toolbar flex items-center gap-2 p-2 border-b shrink-0 flex-wrap">
           <Select value={layout} onValueChange={(v) => setLayout(v as LayoutType)}>
             <SelectTrigger className="w-[25] h-8 text-xs">
               <SelectValue placeholder="布局" />
@@ -535,9 +552,9 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         </div>
 
         {/* 标签页切换 */}
-        <div className="flex border-b shrink-0">
+        <div className="diagram-editor-tabs flex border-b shrink-0">
           <button
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`diagram-editor-tab-code flex-1 px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'code'
                 ? 'text-foreground border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground'
@@ -547,7 +564,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
             代码
           </button>
           <button
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`diagram-editor-tab-history flex-1 px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'history'
                 ? 'text-foreground border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground'
@@ -562,6 +579,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         {/* 内容区 - 带自定义滚动条 */}
         <div
           className={`
+            diagram-editor-content
             flex-1 min-h-0 overflow-hidden rounded-b-lg
             [&::-webkit-scrollbar]:w-1.5
             [&::-webkit-scrollbar-track]:bg-transparent
@@ -578,7 +596,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
               darkMode={isDarkMode}
             />
           ) : (
-            <div className="h-full overflow-auto p-3 space-y-2">
+            <div className="diagram-editor-history-list h-full overflow-auto p-3 space-y-2">
               {snapshots.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   暂无历史记录
@@ -587,7 +605,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
                 snapshots.map((snapshot) => (
                   <div
                     key={snapshot.id}
-                    className="flex items-center justify-between p-2 border rounded-lg text-sm"
+                    className="diagram-editor-history-item flex items-center justify-between p-2 border rounded-lg text-sm"
                   >
                     <div className="min-w-0">
                       <div className="font-medium truncate">
@@ -629,7 +647,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
           variant="outline"
           size="icon"
           onClick={togglePanel}
-          className="absolute z-20 bg-background/80 backdrop-blur-sm shadow-lg transition-[left,top] duration-300 ease-out"
+          className="diagram-editor-expand-btn absolute z-20 bg-background/80 backdrop-blur-sm shadow-lg transition-[left,top] duration-300 ease-out"
           style={{
             left: editorLeft,
             top: editorTop,

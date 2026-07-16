@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Project, Diagram, DiagramFolder, Snapshot, UserSettings } from '@/types'
+import type { Project, Diagram, DiagramFolder, FolderCollapseState, Snapshot, UserSettings } from '@/types'
 import type { SyncLogEntry, SyncQueueItem } from '@/types/sync'
 
 const db = new Dexie('MermaidLocalDB') as Dexie & {
@@ -8,6 +8,8 @@ const db = new Dexie('MermaidLocalDB') as Dexie & {
   folders: EntityTable<DiagramFolder, 'id'>
   snapshots: EntityTable<Snapshot, 'id'>
   settings: EntityTable<UserSettings, 'id'>
+  // 文件夹展开/收起状态：纯本地 UI 状态，不参与 GitHub 同步
+  folderCollapse: EntityTable<FolderCollapseState, 'folderId'>
   // 同步相关表
   syncLog: EntityTable<SyncLogEntry, 'id'>
   syncQueue: EntityTable<SyncQueueItem, 'id'>
@@ -151,6 +153,38 @@ db.version(6)
       await tx.table('projects').update(projects[i].id, { order: i })
     }
   })
+
+// 版本 7：文件夹纳入 GitHub 同步范围
+db.version(7)
+  .stores({
+    projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+    diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+    folders: 'id, projectId, parentId, name, order, updatedAt, syncStatus, lastSyncTime',
+    snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+    settings: 'id',
+    syncLog: '++id, timestamp, status, entityType, entityId',
+    syncQueue: '++id, entityType, entityId, priority, createdAt',
+  })
+  .upgrade(async (tx) => {
+    await tx
+      .table('folders')
+      .toCollection()
+      .modify((folder: DiagramFolder) => {
+        folder.syncStatus = 'local-only'
+      })
+  })
+
+// 版本 8：文件夹展开/收起状态本地持久化（不参与同步）
+db.version(8).stores({
+  projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+  diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+  folders: 'id, projectId, parentId, name, order, updatedAt, syncStatus, lastSyncTime',
+  folderCollapse: 'folderId, projectId',
+  snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+  settings: 'id',
+  syncLog: '++id, timestamp, status, entityType, entityId',
+  syncQueue: '++id, entityType, entityId, priority, createdAt',
+})
 
 export { db }
 

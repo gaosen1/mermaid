@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useFolderStore } from '@/stores/folderStore'
 import { useSyncStore } from '@/stores/syncStore'
@@ -461,7 +461,16 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     moveDiagramToFolder,
   } = useDiagramStore()
 
-  const { folders, createFolder, updateFolder, deleteFolder, moveFolderToParent } = useFolderStore()
+  const {
+    folders,
+    createFolder,
+    updateFolder,
+    deleteFolder,
+    moveFolderToParent,
+    collapsedFolderIds: collapsedFolders,
+    loadCollapsedFolders,
+    toggleFolderCollapsed,
+  } = useFolderStore()
   const { isAuthenticated } = useSyncStore()
 
   // Dialog state
@@ -481,7 +490,6 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [inputName, setInputName] = useState('')
   const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
   const [editDiagramType, setEditDiagramType] = useState<DiagramType>('mermaid')
-  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
   // 当前激活的文件夹（决定工具栏「新建」的默认父级）
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null)
@@ -489,6 +497,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 文件夹展开/收起状态按项目从本地 IndexedDB 加载（纯本地 UI 状态，不参与同步）
+  useEffect(() => {
+    loadCollapsedFolders(projectId)
+  }, [projectId, loadCollapsedFolders])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -630,8 +643,9 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     if (createDiagramFolderId) {
       await moveDiagramToFolder(diagram.id, createDiagramFolderId)
     }
-    setCurrentDiagram({ ...diagram, folderId: createDiagramFolderId })
-    onSelectDiagram(diagram)
+    const createdDiagram = { ...diagram, folderId: createDiagramFolderId }
+    setCurrentDiagram(createdDiagram)
+    onSelectDiagram(createdDiagram)
     setInputName('')
     setNewDiagramType('mermaid')
     setCreateDiagramFolderId(null)
@@ -791,11 +805,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
   const toggleFolder = (id: string) => {
     setActiveFolderId(id)
-    setCollapsedFolders((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) { next.delete(id) } else { next.add(id) }
-      return next
-    })
+    toggleFolderCollapsed(projectId, id)
   }
 
   // ── Load folders alongside diagrams ──

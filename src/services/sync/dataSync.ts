@@ -3,9 +3,9 @@
  * 负责计算本地和远端数据的差异，生成校验和
  */
 
-import type { Project, Diagram, Snapshot } from '@/types'
+import type { Project, Diagram, DiagramFolder, Snapshot } from '@/types'
 
-export type EntityType = 'project' | 'diagram' | 'snapshot'
+export type EntityType = 'project' | 'diagram' | 'folder' | 'snapshot'
 
 export type DiffType = 'create' | 'update' | 'delete' | 'conflict' | 'unchanged'
 
@@ -25,6 +25,10 @@ export interface ProjectDiff extends DiffResult<Project> {
 
 export interface DiagramDiff extends DiffResult<Diagram> {
   entityType: 'diagram'
+}
+
+export interface FolderDiff extends DiffResult<DiagramFolder> {
+  entityType: 'folder'
 }
 
 export interface SnapshotDiff extends DiffResult<Snapshot> {
@@ -52,6 +56,7 @@ export async function calculateProjectChecksum(project: Project): Promise<string
     name: project.name,
     description: project.description,
     tags: project.tags,
+    order: project.order,
     createdAt: project.createdAt,
     updatedAt: project.updatedAt,
   }
@@ -65,12 +70,30 @@ export async function calculateDiagramChecksum(diagram: Diagram): Promise<string
   const coreData = {
     id: diagram.id,
     projectId: diagram.projectId,
+    folderId: diagram.folderId,
     name: diagram.name,
     type: diagram.type,
     source: diagram.source,
     config: diagram.config,
+    order: diagram.order,
     createdAt: diagram.createdAt,
     updatedAt: diagram.updatedAt,
+  }
+  return calculateChecksum(JSON.stringify(coreData))
+}
+
+/**
+ * 计算 DiagramFolder 的校验和
+ */
+export async function calculateFolderChecksum(folder: DiagramFolder): Promise<string> {
+  const coreData = {
+    id: folder.id,
+    projectId: folder.projectId,
+    parentId: folder.parentId,
+    name: folder.name,
+    order: folder.order,
+    createdAt: folder.createdAt,
+    updatedAt: folder.updatedAt,
   }
   return calculateChecksum(JSON.stringify(coreData))
 }
@@ -237,6 +260,81 @@ export async function compareDiagrams(
     return {
       type: 'update',
       entityType: 'diagram',
+      entityId: local.id,
+      local,
+      remote,
+      localChecksum,
+      remoteChecksum,
+    }
+  }
+
+  throw new Error('Invalid comparison state')
+}
+
+/**
+ * 比较两个 DiagramFolder，返回差异类型
+ */
+export async function compareFolders(
+  local: DiagramFolder | null,
+  remote: DiagramFolder | null
+): Promise<FolderDiff> {
+  if (local && !remote) {
+    const checksum = await calculateFolderChecksum(local)
+    return {
+      type: 'create',
+      entityType: 'folder',
+      entityId: local.id,
+      local,
+      localChecksum: checksum,
+    }
+  }
+
+  if (!local && remote) {
+    const checksum = await calculateFolderChecksum(remote)
+    return {
+      type: 'delete',
+      entityType: 'folder',
+      entityId: remote.id,
+      remote,
+      remoteChecksum: checksum,
+    }
+  }
+
+  if (local && remote) {
+    const localChecksum = await calculateFolderChecksum(local)
+    const remoteChecksum = await calculateFolderChecksum(remote)
+
+    if (localChecksum === remoteChecksum) {
+      return {
+        type: 'unchanged',
+        entityType: 'folder',
+        entityId: local.id,
+        local,
+        remote,
+        localChecksum,
+        remoteChecksum,
+      }
+    }
+
+    if (
+      local.syncStatus === 'pending' &&
+      local.remoteChecksum &&
+      local.remoteChecksum !== remoteChecksum
+    ) {
+      return {
+        type: 'conflict',
+        entityType: 'folder',
+        entityId: local.id,
+        local,
+        remote,
+        localChecksum,
+        remoteChecksum,
+      }
+    }
+
+    return {
+      type: 'update',
+      entityType: 'folder',
       entityId: local.id,
       local,
       remote,

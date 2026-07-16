@@ -26,6 +26,12 @@ export interface DiagramFolder {
   order?: number
   createdAt: number
   updatedAt: number
+  // 同步相关字段
+  syncStatus?: SyncStatus
+  lastSyncTime?: number
+  remoteChecksum?: string
+  localChecksum?: string
+  syncError?: string
 }
 
 export interface Diagram {
@@ -45,6 +51,16 @@ export interface Diagram {
   remoteChecksum?: string
   localChecksum?: string
   syncError?: string
+}
+
+/**
+ * 文件夹展开/收起状态，仅本地持久化，不参与 GitHub 同步
+ */
+export interface FolderCollapseState {
+  folderId: string
+  projectId: string
+  collapsed: boolean
+  updatedAt: number
 }
 
 export type LayoutType = 'elk' | 'dagre' | 'hierarchical'

@@ -10,8 +10,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSettingsStore } from '@/stores/settingsStore'
+import { useFolderStore } from '@/stores/folderStore'
 import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
+import { getFolderPath } from '@/utils/folder'
+import { getDiagramFilename } from '@/utils/diagram'
 
 const EDITOR_STORAGE_KEY = 'svg-diagram-editor-state'
 
@@ -51,6 +54,11 @@ export function SvgDiagramEditor({
 }: SvgDiagramEditorProps) {
   const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
   const { settings } = useSettingsStore()
+  const { folders } = useFolderStore()
+
+  const relativePath = currentDiagram
+    ? [...getFolderPath(currentDiagram.folderId, folders), getDiagramFilename(currentDiagram)].join(' / ')
+    : ''
 
   const [source, setSource] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
@@ -176,17 +184,18 @@ export function SvgDiagramEditor({
   const editorBottom = 12
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="svg-editor-root relative h-full w-full overflow-hidden">
       <SvgRenderer
         ref={rendererRef}
         source={source}
-        className="absolute inset-0"
+        className="svg-editor-canvas absolute inset-0"
         fileName={currentDiagram.name}
         diagramId={diagramId}
       />
 
       <div
         className={`
+          svg-editor-panel
           absolute z-20
           flex flex-col
           bg-background/95 backdrop-blur-md
@@ -203,7 +212,7 @@ export function SvgDiagramEditor({
         onMouseEnter={() => setIsPanelHovered(true)}
         onMouseLeave={() => setIsPanelHovered(false)}
       >
-        <div className="flex items-center justify-between p-3 border-b shrink-0">
+        <div className="svg-editor-header flex items-center justify-between p-3 border-b shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-sm font-semibold truncate">{currentDiagram.name}</h2>
             <span className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
@@ -220,7 +229,15 @@ export function SvgDiagramEditor({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 p-2 border-b shrink-0 flex-wrap">
+        {/* 文件相对路径 */}
+        <div
+          className="svg-editor-path px-3 py-1 border-b shrink-0 text-xs text-muted-foreground truncate"
+          title={relativePath}
+        >
+          {relativePath}
+        </div>
+
+        <div className="svg-editor-toolbar flex items-center gap-2 p-2 border-b shrink-0 flex-wrap">
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <FileCode2 className="h-3.5 w-3.5" />
             完整 SVG 预览
@@ -252,9 +269,9 @@ export function SvgDiagramEditor({
           </div>
         </div>
 
-        <div className="flex border-b shrink-0">
+        <div className="svg-editor-tabs flex border-b shrink-0">
           <button
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`svg-editor-tab-code flex-1 px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'code'
                 ? 'text-foreground border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground'
@@ -264,7 +281,7 @@ export function SvgDiagramEditor({
             代码
           </button>
           <button
-            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+            className={`svg-editor-tab-history flex-1 px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'history'
                 ? 'text-foreground border-b-2 border-primary'
                 : 'text-muted-foreground hover:text-foreground'
@@ -278,6 +295,7 @@ export function SvgDiagramEditor({
 
         <div
           className={`
+            svg-editor-content
             flex-1 min-h-0 overflow-hidden rounded-b-lg
             [&::-webkit-scrollbar]:w-1.5
             [&::-webkit-scrollbar-track]:bg-transparent
@@ -296,7 +314,7 @@ export function SvgDiagramEditor({
               placeholder="在此输入完整 SVG 代码..."
             />
           ) : (
-            <div className="h-full overflow-auto p-3 space-y-2">
+            <div className="svg-editor-history-list h-full overflow-auto p-3 space-y-2">
               {snapshots.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
                   暂无历史记录
@@ -305,7 +323,7 @@ export function SvgDiagramEditor({
                 snapshots.map((snapshot) => (
                   <div
                     key={snapshot.id}
-                    className="flex items-center justify-between p-2 border rounded-lg text-sm"
+                    className="svg-editor-history-item flex items-center justify-between p-2 border rounded-lg text-sm"
                   >
                     <div className="min-w-0">
                       <div className="font-medium truncate">
@@ -346,7 +364,7 @@ export function SvgDiagramEditor({
           variant="outline"
           size="icon"
           onClick={togglePanel}
-          className="absolute z-20 bg-background/80 backdrop-blur-sm shadow-lg transition-[left,top] duration-300 ease-out"
+          className="svg-editor-expand-btn absolute z-20 bg-background/80 backdrop-blur-sm shadow-lg transition-[left,top] duration-300 ease-out"
           style={{
             left: editorLeft,
             top: editorTop,

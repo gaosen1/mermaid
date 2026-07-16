@@ -14,7 +14,7 @@ export interface SyncLogEntry {
   id?: number
   timestamp: number
   operation: 'push' | 'pull' | 'conflict' | 'error'
-  entityType: 'project' | 'diagram' | 'snapshot'
+  entityType: 'project' | 'diagram' | 'folder' | 'snapshot'
   entityId: string
   status: 'success' | 'failed'
   message?: string
@@ -24,7 +24,7 @@ export interface SyncLogEntry {
 // 同步队列项
 export interface SyncQueueItem {
   id?: number
-  entityType: 'project' | 'diagram' | 'snapshot'
+  entityType: 'project' | 'diagram' | 'folder' | 'snapshot'
   entityId: string
   operation: 'create' | 'update' | 'delete'
   priority: number

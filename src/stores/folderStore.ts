@@ -5,7 +5,10 @@ import type { DiagramFolder } from '@/types'
 
 interface FolderState {
   folders: DiagramFolder[]
+  collapsedFolderIds: Set<string>
   loadFoldersByProject: (projectId: string) => Promise<void>
+  loadCollapsedFolders: (projectId: string) => Promise<void>
+  toggleFolderCollapsed: (projectId: string, folderId: string) => Promise<void>
   createFolder: (projectId: string, name: string, parentId?: string | null) => Promise<DiagramFolder>
   updateFolder: (id: string, updates: Partial<Pick<DiagramFolder, 'name' | 'order'>>) => Promise<void>
   deleteFolder: (id: string) => Promise<void>
@@ -15,10 +18,29 @@ interface FolderState {
 
 export const useFolderStore = create<FolderState>((set) => ({
   folders: [],
+  collapsedFolderIds: new Set(),
 
   loadFoldersByProject: async (projectId) => {
     const folders = await db.folders.where('projectId').equals(projectId).sortBy('order')
     set({ folders })
+  },
+
+  loadCollapsedFolders: async (projectId) => {
+    const rows = await db.folderCollapse.where('projectId').equals(projectId).toArray()
+    set({ collapsedFolderIds: new Set(rows.filter((r) => r.collapsed).map((r) => r.folderId)) })
+  },
+
+  toggleFolderCollapsed: async (projectId, folderId) => {
+    const current = useFolderStore.getState().collapsedFolderIds
+    const collapsed = !current.has(folderId)
+    const next = new Set(current)
+    if (collapsed) {
+      next.add(folderId)
+    } else {
+      next.delete(folderId)
+    }
+    set({ collapsedFolderIds: next })
+    await db.folderCollapse.put({ folderId, projectId, collapsed, updatedAt: Date.now() })
   },
 
   createFolder: async (projectId, name, parentId = null) => {
@@ -59,8 +81,12 @@ export const useFolderStore = create<FolderState>((set) => ({
       .modify({ folderId: null })
 
     await db.folders.bulkDelete(toDelete)
+    await db.folderCollapse.bulkDelete(toDelete)
     set((state) => ({
       folders: state.folders.filter((f) => !toDelete.includes(f.id)),
+      collapsedFolderIds: new Set(
+        [...state.collapsedFolderIds].filter((fid) => !toDelete.includes(fid))
+      ),
     }))
   },
 

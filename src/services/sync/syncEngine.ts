@@ -4,7 +4,7 @@
  */
 
 import { db } from '@/db'
-import type { Project, Diagram } from '@/types'
+import type { Project, Diagram, DiagramFolder } from '@/types'
 import type { SyncLogEntry, SyncSettings } from '@/types/sync'
 import { getFile, putFile, putFileBase64, listDirectory } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
@@ -13,7 +13,9 @@ import { getPngDataUrlBase64 } from '@/utils/png'
 import {
   calculateProjectChecksum,
   calculateDiagramChecksum,
+  calculateFolderChecksum,
   compareProjects,
+  compareFolders,
 } from './dataSync'
 import { createConflictInfo, resolveConflict } from './conflictResolver'
 
@@ -21,6 +23,7 @@ import { createConflictInfo, resolveConflict } from './conflictResolver'
 const PATHS = {
   PROJECTS_JSON: 'data/projects.json',
   PROJECT_META: (id: string) => `data/projects/${id}/meta.json`,
+  PROJECT_FOLDERS: (id: string) => `data/projects/${id}/folders.json`,
   SNAPSHOT: (diagramId: string, id: string) => `data/snapshots/${diagramId}/${id}.json`,
 }
 
@@ -94,6 +97,7 @@ export async function syncAll(
 
       try {
         await syncProject(project, remoteProjects, settings)
+        await syncProjectFolders(project.id, settings)
         result.pushed++
       } catch (error) {
         result.errors.push(`Failed to sync project ${project.name}: ${error}`)
@@ -249,6 +253,109 @@ async function handleProjectConflict(
 }
 
 /**
+ * 获取远端某项目下的文件夹列表
+ */
+async function fetchRemoteFolders(projectId: string): Promise<Map<string, DiagramFolder>> {
+  const map = new Map<string, DiagramFolder>()
+
+  try {
+    const file = await getFile(PATHS.PROJECT_FOLDERS(projectId))
+    if (file?.content) {
+      const data = JSON.parse(file.content)
+      if (data.folders && Array.isArray(data.folders)) {
+        for (const folder of data.folders) {
+          map.set(folder.id, folder)
+        }
+      }
+    }
+  } catch {
+    // 文件不存在或解析失败，返回空 map
+  }
+
+  return map
+}
+
+/**
+ * 同步某项目下的文件夹（含排序 order）
+ */
+async function syncProjectFolders(projectId: string, settings: SyncSettings): Promise<void> {
+  const localFolders = await db.folders.where('projectId').equals(projectId).toArray()
+  if (localFolders.length === 0) return
+
+  const remoteFolders = await fetchRemoteFolders(projectId)
+  let needsPush = false
+
+  for (const folder of localFolders) {
+    const diff = await compareFolders(folder, remoteFolders.get(folder.id) || null)
+
+    if (diff.type === 'conflict') {
+      if (settings.conflictStrategy === 'ask') {
+        await db.folders.update(folder.id, {
+          syncStatus: 'conflict',
+          syncError: 'Conflict detected, manual resolution required',
+        })
+        continue
+      }
+
+      const conflictInfo = createConflictInfo(diff)
+      if (!conflictInfo) continue
+      const resolution = await resolveConflict(conflictInfo, settings.conflictStrategy)
+
+      if (resolution.keepVersion === 'remote') {
+        const remote = remoteFolders.get(folder.id)!
+        await db.folders.update(folder.id, {
+          ...remote,
+          syncStatus: 'synced',
+          lastSyncTime: Date.now(),
+        })
+        continue
+      }
+      needsPush = true
+    } else if (diff.type === 'create' || diff.type === 'update') {
+      needsPush = true
+    }
+  }
+
+  if (needsPush) {
+    await pushProjectFolders(projectId)
+  }
+}
+
+/**
+ * 推送某项目下的全部文件夹到远端（含排序 order）
+ */
+async function pushProjectFolders(projectId: string): Promise<void> {
+  const folders = await db.folders.where('projectId').equals(projectId).toArray()
+  const content = JSON.stringify(
+    {
+      version: '1.0.0',
+      lastSync: new Date().toISOString(),
+      folders,
+    },
+    null,
+    2
+  )
+
+  await putFile(
+    PATHS.PROJECT_FOLDERS(projectId),
+    content,
+    `Sync folders for project: ${projectId}`
+  )
+
+  const now = Date.now()
+  for (const folder of folders) {
+    const checksum = await calculateFolderChecksum(folder)
+    await db.folders.update(folder.id, {
+      syncStatus: 'synced',
+      lastSyncTime: now,
+      localChecksum: checksum,
+      remoteChecksum: checksum,
+      syncError: undefined,
+    })
+  }
+}
+
+/**
  * 同步单个图表
  */
 async function syncDiagram(diagram: Diagram): Promise<void> {
@@ -290,6 +397,8 @@ function formatDiagramContent(diagram: Diagram): string {
     id: diagram.id,
     name: diagram.name,
     projectId: diagram.projectId,
+    folderId: diagram.folderId ?? null,
+    order: diagram.order ?? 0,
     createdAt: new Date(diagram.createdAt).toISOString(),
     updatedAt: new Date(diagram.updatedAt).toISOString(),
   }
@@ -299,6 +408,8 @@ meta:
   id: ${meta.id}
   name: ${meta.name}
   projectId: ${meta.projectId}
+  folderId: ${meta.folderId}
+  order: ${meta.order}
   createdAt: ${meta.createdAt}
   updatedAt: ${meta.updatedAt}
 config: ${JSON.stringify(diagram.config || {})}
@@ -324,6 +435,8 @@ async function pullRemoteChanges(
   const localProjectIds = new Set(localProjects.map((p) => p.id))
   const localDiagrams = await db.diagrams.toArray()
   const localDiagramIds = new Set(localDiagrams.map((d) => d.id))
+  const localFolders = await db.folders.toArray()
+  const localFolderIds = new Set(localFolders.map((f) => f.id))
 
   for (const [id, remote] of remoteProjects) {
     if (!localProjectIds.has(id)) {
@@ -335,12 +448,46 @@ async function pullRemoteChanges(
       pulled++
     }
 
-    // 不论项目是否已存在，都拉取缺失的远端图表
+    // 不论项目是否已存在，都拉取缺失的远端图表与文件夹
     const diagramsPulled = await pullRemoteDiagrams(id, localDiagramIds)
     pulled += diagramsPulled
+
+    const foldersPulled = await pullRemoteFolders(id, localFolderIds)
+    pulled += foldersPulled
   }
 
   return { pulled, conflicts }
+}
+
+/**
+ * 拉取单个项目下远端有但本地缺失的文件夹
+ */
+async function pullRemoteFolders(projectId: string, localFolderIds: Set<string>): Promise<number> {
+  let pulled = 0
+
+  try {
+    const file = await getFile(PATHS.PROJECT_FOLDERS(projectId))
+    if (!file?.content) return 0
+
+    const data = JSON.parse(file.content)
+    if (!data.folders || !Array.isArray(data.folders)) return 0
+
+    for (const folder of data.folders as DiagramFolder[]) {
+      if (!folder.id || localFolderIds.has(folder.id)) continue
+
+      await db.folders.add({
+        ...folder,
+        syncStatus: 'synced',
+        lastSyncTime: Date.now(),
+      })
+      localFolderIds.add(folder.id)
+      pulled++
+    }
+  } catch {
+    // 文件不存在或解析失败，忽略
+  }
+
+  return pulled
 }
 
 /**
@@ -405,17 +552,23 @@ function parseDiagramFile(content: string, diagramId: string, projectId: string)
 
   const idMatch = metaBlock.match(/id:\s*(.+)/)
   const nameMatch = metaBlock.match(/name:\s*(.+)/)
+  const folderIdMatch = metaBlock.match(/folderId:\s*(.+)/)
+  const orderMatch = metaBlock.match(/order:\s*(.+)/)
   const createdAtMatch = metaBlock.match(/createdAt:\s*(.+)/)
   const updatedAtMatch = metaBlock.match(/updatedAt:\s*(.+)/)
   const configMatch = metaBlock.match(/config:\s*(.+)/)
 
+  const folderIdRaw = folderIdMatch?.[1]?.trim()
+
   return {
     id: idMatch?.[1]?.trim() || diagramId,
     projectId,
+    folderId: !folderIdRaw || folderIdRaw === 'null' ? null : folderIdRaw,
     name: nameMatch?.[1]?.trim() || diagramId,
     source: source.trim(),
     type: 'mermaid',
     config: configMatch?.[1] ? JSON.parse(configMatch[1].trim()) : {},
+    order: orderMatch?.[1] ? Number(orderMatch[1].trim()) : undefined,
     createdAt: createdAtMatch?.[1] ? new Date(createdAtMatch[1].trim()).getTime() : Date.now(),
     updatedAt: updatedAtMatch?.[1] ? new Date(updatedAtMatch[1].trim()).getTime() : Date.now(),
   }
@@ -434,6 +587,7 @@ async function updateProjectsJson(): Promise<void> {
       name: p.name,
       description: p.description,
       tags: p.tags,
+      order: p.order,
       createdAt: p.createdAt,
       updatedAt: p.updatedAt,
     })),
