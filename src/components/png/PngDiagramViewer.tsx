@@ -2,17 +2,22 @@ import { useCallback } from 'react'
 import { Download, ImageIcon, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useDiagramStore } from '@/stores/diagramStore'
+import { useFolderStore } from '@/stores/folderStore'
 import { exportDiagram } from '@/utils/export'
 import { isImageSource, isImageType } from '@/utils/png'
-import { getDiagramTypeLabel } from '@/utils/diagram'
+import { getDiagramTypeLabel, getDiagramFilename } from '@/utils/diagram'
+import { getFolderPath } from '@/utils/folder'
 import { useZoomPan } from '@/hooks/useZoomPan'
 
 interface PngDiagramViewerProps {
   diagramId: string
+  sidebarWidth?: number
+  sidebarAnimating?: boolean
 }
 
-export function PngDiagramViewer({ diagramId }: PngDiagramViewerProps) {
+export function PngDiagramViewer({ diagramId, sidebarWidth = 0, sidebarAnimating = false }: PngDiagramViewerProps) {
   const { currentDiagram } = useDiagramStore()
+  const { folders } = useFolderStore()
   const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView } =
     useZoomPan(diagramId)
 
@@ -34,9 +39,20 @@ export function PngDiagramViewer({ diagramId }: PngDiagramViewerProps) {
 
   const hasImage = isImageSource(currentDiagram.source)
   const typeLabel = getDiagramTypeLabel(currentDiagram.type)
+  const relativePath = [...getFolderPath(currentDiagram.folderId, folders), getDiagramFilename(currentDiagram)].join(' / ')
 
   return (
     <div className="image-diagram-viewer relative h-full w-full overflow-hidden bg-muted/30">
+      <div
+        className={`diagram-editor-path absolute top-4 z-10 max-w-[60%] truncate rounded bg-background/80 px-1.5 py-0.5 text-xs text-muted-foreground backdrop-blur select-none ${
+          sidebarAnimating ? 'transition-[left] duration-300 ease-out' : ''
+        }`}
+        style={{ left: sidebarWidth + 16 }}
+        title={relativePath}
+      >
+        {relativePath}
+      </div>
+
       <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
         {hasImage && (
           <>

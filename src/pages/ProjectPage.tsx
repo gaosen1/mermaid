@@ -225,7 +225,11 @@ export function ProjectPage({ projectId, initialDiagramId = null, onBack, onSele
             sidebarAnimating={isAnimating}
           />
         ) : currentDiagram.type === 'png' || currentDiagram.type === 'jpg' || currentDiagram.type === 'webp' ? (
-          <PngDiagramViewer diagramId={currentDiagram.id} />
+          <PngDiagramViewer
+            diagramId={currentDiagram.id}
+            sidebarWidth={sidebarState.collapsed ? 0 : sidebarState.width}
+            sidebarAnimating={isAnimating}
+          />
         ) : (
           <DiagramEditor
             diagramId={currentDiagram.id}

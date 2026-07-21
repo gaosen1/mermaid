@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CodeEditor } from '@/components/mermaid/CodeEditor'
 import { useDiagramStore } from '@/stores/diagramStore'
+import { useFolderStore } from '@/stores/folderStore'
 import { Button } from '@/components/ui/button'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { Download, History, PanelLeft, PanelLeftClose, Save } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
+import { getFolderPath } from '@/utils/folder'
+import { getDiagramFilename } from '@/utils/diagram'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
 const EDITOR_STORAGE_KEY = 'txt-diagram-editor-state'
@@ -59,6 +62,11 @@ export function TxtEditor({
   const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } =
     useDiagramStore()
   const { settings } = useSettingsStore()
+  const { folders } = useFolderStore()
+
+  const relativePath = currentDiagram
+    ? [...getFolderPath(currentDiagram.folderId, folders), getDiagramFilename(currentDiagram)].join(' / ')
+    : ''
 
   const [source, setSource] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
@@ -266,6 +274,14 @@ export function TxtEditor({
               <PanelLeftClose className="h-4 w-4" />
             </Button>
           </div>
+        </div>
+
+        {/* 文件相对路径 */}
+        <div
+          className="diagram-editor-path px-3 py-1 border-b shrink-0 text-xs text-muted-foreground truncate"
+          title={relativePath}
+        >
+          {relativePath}
         </div>
 
         {/* Panel toolbar */}

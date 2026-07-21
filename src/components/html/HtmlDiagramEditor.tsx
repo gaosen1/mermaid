@@ -231,7 +231,7 @@ export function HtmlDiagramEditor({
 
         {/* 文件相对路径 */}
         <div
-          className="html-editor-path px-3 py-1 border-b shrink-0 text-xs text-muted-foreground truncate"
+          className="diagram-editor-path px-3 py-1 border-b shrink-0 text-xs text-muted-foreground truncate"
           title={relativePath}
         >
           {relativePath}
