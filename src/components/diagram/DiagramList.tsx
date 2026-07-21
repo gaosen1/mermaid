@@ -253,7 +253,7 @@ function FolderItem({
     >
       <div
         ref={setDropRef}
-        className={`flex items-center justify-between py-1 px-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
+        className={`diagram-list-folder-header flex items-center justify-between py-1 px-2 rounded-md cursor-pointer hover:bg-accent transition-colors ${
           isOver ? 'ring-1 ring-primary bg-accent' : isActive ? 'bg-accent/60' : ''
         }`}
         onClick={onToggle}
@@ -350,7 +350,7 @@ interface TreeRendererProps {
   collapsedFolders: Set<string>
   overFolderId: string | null
   activeFolderId: string | null
-  currentDiagramId: string | undefined
+  selectedDiagramId: string | null
   isAuthenticated: boolean
   onToggleFolder: (id: string) => void
   onEditDiagram: (d: Diagram) => void
@@ -369,7 +369,7 @@ function TreeRenderer({
   collapsedFolders,
   overFolderId,
   activeFolderId,
-  currentDiagramId,
+  selectedDiagramId,
   isAuthenticated,
   onToggleFolder,
   onEditDiagram,
@@ -389,7 +389,7 @@ function TreeRenderer({
             <SortableDiagramItem
               key={node.diagram.id}
               diagram={node.diagram}
-              isActive={currentDiagramId === node.diagram.id}
+              isActive={selectedDiagramId === node.diagram.id}
               isAuthenticated={isAuthenticated}
               depth={depth}
               onEdit={onEditDiagram}
@@ -426,7 +426,7 @@ function TreeRenderer({
                 collapsedFolders={collapsedFolders}
                 overFolderId={overFolderId}
                 activeFolderId={activeFolderId}
-                currentDiagramId={currentDiagramId}
+                selectedDiagramId={selectedDiagramId}
                 isAuthenticated={isAuthenticated}
                 onToggleFolder={onToggleFolder}
                 onEditDiagram={onEditDiagram}
@@ -451,7 +451,6 @@ function TreeRenderer({
 export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const {
     diagrams,
-    currentDiagram,
     loading,
     createDiagram,
     updateDiagram,
@@ -491,8 +490,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
   const [editDiagramType, setEditDiagramType] = useState<DiagramType>('mermaid')
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
-  // 当前激活的文件夹（决定工具栏「新建」的默认父级）
-  const [activeFolderId, setActiveFolderId] = useState<string | null>(null)
+  // 当前选中的 item（决定工具栏「新建」的目标位置；点击空白处会清空）
+  const [selectedItem, setSelectedItem] = useState<{ kind: 'diagram' | 'folder'; id: string } | null>(null)
   // 当前正在拖拽的 item id（用于 DragOverlay）
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
 
@@ -501,7 +500,15 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   // 文件夹展开/收起状态按项目从本地 IndexedDB 加载（纯本地 UI 状态，不参与同步）
   useEffect(() => {
     loadCollapsedFolders(projectId)
+    setSelectedItem(null)
   }, [projectId, loadCollapsedFolders])
+
+  // 未选中任何 item → 根目录；选中文件夹 → 该文件夹内；选中文件 → 与该文件同级
+  const getTargetFolderId = (): string | null => {
+    if (!selectedItem) return null
+    if (selectedItem.kind === 'folder') return selectedItem.id
+    return diagrams.find((d) => d.id === selectedItem.id)?.folderId ?? null
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -673,6 +680,9 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const confirmDeleteDiagram = async () => {
     if (!deletingDiagram) return
     await deleteDiagram(deletingDiagram.id)
+    if (selectedItem?.kind === 'diagram' && selectedItem.id === deletingDiagram.id) {
+      setSelectedItem(null)
+    }
     setDeletingDiagram(null)
     setDeleteDiagramOpen(false)
   }
@@ -719,6 +729,9 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const confirmDeleteFolder = async () => {
     if (!deletingFolder) return
     await deleteFolder(deletingFolder.id)
+    if (selectedItem?.kind === 'folder' && selectedItem.id === deletingFolder.id) {
+      setSelectedItem(null)
+    }
     setDeletingFolder(null)
     setDeleteFolderOpen(false)
   }
@@ -744,8 +757,16 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
       window.open(url.toString(), '_blank', 'noopener,noreferrer')
       return
     }
-    setActiveFolderId(null)
+    setSelectedItem({ kind: 'diagram', id: diagram.id })
     handleSelectDiagram(diagram)
+  }
+
+  // ── 点击空白处取消选中 ──
+
+  const handleTreeBackgroundClick = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement
+    if (target.closest('.diagram-list-item, .diagram-list-folder-header')) return
+    setSelectedItem(null)
   }
 
   // ── Paste / import ──
@@ -804,7 +825,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   // ── Folder collapse toggle ──
 
   const toggleFolder = (id: string) => {
-    setActiveFolderId(id)
+    setSelectedItem({ kind: 'folder', id })
     toggleFolderCollapsed(projectId, id)
   }
 
@@ -829,7 +850,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <Button
               size="sm"
               className="flex-1"
-              onClick={() => { setCreateDiagramFolderId(activeFolderId); setInputName(''); setNewDiagramType('mermaid') }}
+              onClick={() => { setCreateDiagramFolderId(getTargetFolderId()); setInputName(''); setNewDiagramType('mermaid') }}
             >
               <Plus className="h-4 w-4 mr-1" />
               新建图表
@@ -880,7 +901,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               variant="outline"
               size="sm"
               title="新建文件夹"
-              onClick={() => { setCreateFolderParentId(activeFolderId); setInputName('') }}
+              onClick={() => { setCreateFolderParentId(getTargetFolderId()); setInputName('') }}
             >
               <FolderPlus className="h-4 w-4" />
             </Button>
@@ -927,6 +948,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         className="flex-1 min-h-0"
         viewportClassName="[&>div]:!block [&>div]:!min-w-0 min-h-0"
         contentClassName="block min-w-0"
+        onClick={handleTreeBackgroundClick}
       >
         {diagrams.length === 0 && folders.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
@@ -948,8 +970,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   depth={0}
                   collapsedFolders={collapsedFolders}
                   overFolderId={overFolderId}
-                  activeFolderId={activeFolderId}
-                  currentDiagramId={currentDiagram?.id}
+                  activeFolderId={selectedItem?.kind === 'folder' ? selectedItem.id : null}
+                  selectedDiagramId={selectedItem?.kind === 'diagram' ? selectedItem.id : null}
                   isAuthenticated={isAuthenticated}
                   onToggleFolder={toggleFolder}
                   onEditDiagram={openEditDiagramDialog}
