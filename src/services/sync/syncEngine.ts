@@ -22,10 +22,10 @@ import type {
   SyncDirection,
   SyncPhase,
 } from '@/types/sync'
-import { getFile, putFile, putFileBase64, listDirectory } from '../github/files'
+import { getFile, getFileBase64, putFile, putFileBase64, listDirectory } from '../github/files'
 import { isGitHubInitialized } from '../github/client'
 import { getDiagramFileExtension, getDiagramTypeFromFilename } from '@/utils/diagram'
-import { getPngDataUrlBase64 } from '@/utils/png'
+import { getPngDataUrlBase64, buildImageDataUrl, isImageType } from '@/utils/png'
 import {
   calculateProjectChecksum,
   calculateDiagramChecksum,
@@ -118,6 +118,9 @@ export async function resolveProjectConflict(id: string, keep: 'local' | 'remote
     if (remote) {
       await applyRemoteProject(id, remote, await calculateProjectChecksum(remote))
       await logEntity('conflict', 'project', id, 'success', `手动解决：采用云端 ${remote.name}`)
+    } else {
+      await logEntity('conflict', 'project', id, 'failed', `手动解决失败：云端未找到项目 ${local.name}`)
+      throw new Error(`云端未找到该项目，无法采用云端版本：${local.name}`)
     }
   }
 }
@@ -142,7 +145,13 @@ export async function resolveDiagramConflict(id: string, keep: 'local' | 'remote
       if (remoteDiagram) {
         await applyRemoteDiagram(local, remoteDiagram, remoteInfo.sha)
         await logEntity('conflict', 'diagram', id, 'success', `手动解决：采用云端 ${remoteDiagram.name}`)
+      } else {
+        await logEntity('conflict', 'diagram', id, 'failed', `手动解决失败：无法读取云端图表内容 ${local.name}`)
+        throw new Error(`无法读取云端图表内容，无法采用云端版本：${local.name}`)
       }
+    } else {
+      await logEntity('conflict', 'diagram', id, 'failed', `手动解决失败：云端未找到图表 ${local.name}`)
+      throw new Error(`云端未找到该图表，无法采用云端版本：${local.name}`)
     }
   }
 }
@@ -292,7 +301,9 @@ async function pullProjectDiagrams(
   settings: SyncSettings,
   result: SyncResult
 ): Promise<void> {
-  const files = await listDirectory(PATHS.DIAGRAMS_DIR(projectId))
+  const files = (await listDirectory(PATHS.DIAGRAMS_DIR(projectId))).filter(
+    (f) => !isMetaSidecarPath(f.path)
+  )
 
   for (const fileInfo of files) {
     const diagramId = fileNameToId(fileInfo.path)
@@ -715,8 +726,13 @@ async function uploadDiagram(local: Diagram, checksum: string, result: SyncResul
   const remotePath = getDiagramRemotePath(local)
   let put: { sha: string; url: string }
 
-  if (local.type === 'png') {
+  if (isImageType(local.type)) {
     put = await putFileBase64(remotePath, getPngDataUrlBase64(local.source), `Sync diagram: ${local.name}`)
+    await putFile(
+      getMetaSidecarPath(remotePath),
+      JSON.stringify(buildDiagramMeta(local), null, 2),
+      `Sync diagram metadata: ${local.name}`
+    )
   } else {
     put = await putFile(remotePath, formatDiagramContent(local), `Sync diagram: ${local.name}`)
   }
@@ -786,6 +802,7 @@ async function listRemoteDiagramShas(
   try {
     const files = await listDirectory(PATHS.DIAGRAMS_DIR(projectId))
     for (const f of files) {
+      if (isMetaSidecarPath(f.path)) continue
       map.set(fileNameToId(f.path), { path: f.path, sha: f.sha })
     }
   } catch {
@@ -803,13 +820,65 @@ async function fetchRemoteDiagram(
   diagramId: string
 ): Promise<Diagram | null> {
   const type = getDiagramTypeFromFilename(path) || 'mermaid'
-  // 二进制类型（png 等）无法可靠地以文本解码，跳过拉取
-  if (type === 'png') return null
+
+  if (isImageType(type)) {
+    return fetchRemoteImageDiagram(path, projectId, diagramId, type)
+  }
 
   const file = await getFile(path)
   if (!file?.content) return null
 
   return parseDiagramFile(file.content, projectId, diagramId, type)
+}
+
+/**
+ * 拉取并解析二进制图片图表（png/jpg/webp）。
+ * 图片文件本身是纯二进制，无法像文本类型那样在文件内嵌入 frontmatter 元数据，
+ * 因此 name/createdAt/folderId/config 等元数据存放在同路径的 sidecar
+ * `<file>.meta.json` 中；sidecar 缺失时退化为仅用文件名还原 id。
+ */
+async function fetchRemoteImageDiagram(
+  path: string,
+  projectId: string,
+  diagramId: string,
+  type: 'png' | 'jpg' | 'webp'
+): Promise<Diagram | null> {
+  const file = await getFileBase64(path)
+  if (!file?.base64Content) return null
+
+  const meta = await fetchDiagramSidecarMeta(getMetaSidecarPath(path))
+
+  return {
+    id: (meta?.id as string) || diagramId,
+    projectId: (meta?.projectId as string) || projectId,
+    name: (meta?.name as string) || 'Untitled',
+    type,
+    source: buildImageDataUrl(type, file.base64Content),
+    config: meta?.config as Diagram['config'],
+    folderId: meta && 'folderId' in meta
+      ? (meta.folderId === null ? null : (meta.folderId as string))
+      : undefined,
+    createdAt: meta?.createdAt ? new Date(meta.createdAt as string).getTime() : Date.now(),
+    updatedAt: meta?.updatedAt ? new Date(meta.updatedAt as string).getTime() : Date.now(),
+  }
+}
+
+function getMetaSidecarPath(path: string): string {
+  return `${path}.meta.json`
+}
+
+function isMetaSidecarPath(path: string): boolean {
+  return path.endsWith('.meta.json')
+}
+
+async function fetchDiagramSidecarMeta(path: string): Promise<Record<string, unknown> | null> {
+  try {
+    const file = await getFile(path)
+    if (!file?.content) return null
+    return JSON.parse(file.content)
+  } catch {
+    return null
+  }
 }
 
 // ============ 本地写入辅助 ============
@@ -889,19 +958,24 @@ function fileNameToId(path: string): string {
   return fileName.replace(/\.[^.]+$/, '')
 }
 
-function formatDiagramContent(diagram: Diagram): string {
-  if (diagram.type === 'html' || diagram.type === 'svg' || diagram.type === 'png') {
-    return diagram.source
-  }
-
-  const meta = {
+function buildDiagramMeta(diagram: Diagram) {
+  return {
     id: diagram.id,
     name: diagram.name,
     projectId: diagram.projectId,
     folderId: diagram.folderId ?? null,
     createdAt: new Date(diagram.createdAt).toISOString(),
     updatedAt: new Date(diagram.updatedAt).toISOString(),
+    config: diagram.config || {},
   }
+}
+
+function formatDiagramContent(diagram: Diagram): string {
+  if (diagram.type === 'html' || diagram.type === 'svg' || isImageType(diagram.type)) {
+    return diagram.source
+  }
+
+  const meta = buildDiagramMeta(diagram)
 
   return `---
 meta:

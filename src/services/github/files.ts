@@ -2,10 +2,39 @@ import { getGitHubClient, getGitHubConfig } from './client'
 import type { GitHubFileInfo } from '@/types/sync'
 import { GitHubFileError } from './errors'
 
+// GitHub Contents API 对单个文件内容有约 1MB 的内联上限：超出后 getContent 不再
+// 返回 content 字段（读），createOrUpdateFileContents 也会失败或不可靠（写）。
+// 超过该阈值一律改走 Git Data API（blob/tree/commit）。
+const CONTENTS_API_MAX_BYTES = 1_000_000
+
+function estimateBase64ByteSize(base64: string): number {
+  const len = base64.length
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
+  return Math.floor((len * 3) / 4) - padding
+}
+
 /**
- * 获取文件内容
+ * 按 blob sha 直接读取内容（base64），不经过 Contents API 的内联大小限制。
  */
-export async function getFile(path: string): Promise<GitHubFileInfo | null> {
+async function getBlobBase64(sha: string): Promise<string> {
+  const client = getGitHubClient()
+  const config = getGitHubConfig()
+
+  const { data } = await client.git.getBlob({
+    owner: config.owner,
+    repo: config.repo,
+    file_sha: sha,
+  })
+  return data.content.replace(/\n/g, '')
+}
+
+/**
+ * 读取单个文件的原始信息（sha / size / base64 内容）。
+ * 内容优先取 Contents API 内联结果；超过内联上限时回退到 Blobs API。
+ */
+async function fetchRawFile(
+  path: string
+): Promise<{ path: string; sha: string; size: number; url: string; base64?: string } | null> {
   const client = getGitHubClient()
   const config = getGitHubConfig()
 
@@ -25,20 +54,12 @@ export async function getFile(path: string): Promise<GitHubFileInfo | null> {
       throw new GitHubFileError(`Unexpected content type: ${data.type}`)
     }
 
-    let content: string | undefined
-    if (data.content) {
-      const binary = atob(data.content.replace(/\n/g, ''))
-      const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
-      content = new TextDecoder().decode(bytes)
+    let base64 = data.content ? data.content.replace(/\n/g, '') : undefined
+    if (!base64 && data.size > 0) {
+      base64 = await getBlobBase64(data.sha)
     }
 
-    return {
-      path: data.path,
-      sha: data.sha,
-      content,
-      size: data.size,
-      url: data.html_url || '',
-    }
+    return { path: data.path, sha: data.sha, size: data.size, url: data.html_url || '', base64 }
   } catch (error) {
     const err = error as { status?: number }
     if (err.status === 404) {
@@ -48,6 +69,64 @@ export async function getFile(path: string): Promise<GitHubFileInfo | null> {
       throw error
     }
     throw new GitHubFileError(`Failed to get file: ${path}`, error as Error)
+  }
+}
+
+/**
+ * 获取文件内容（以文本形式解码，适用于 mermaid/svg/html/markdown/txt 等文本格式）
+ */
+export async function getFile(path: string): Promise<GitHubFileInfo | null> {
+  const file = await fetchRawFile(path)
+  if (!file) return null
+
+  let content: string | undefined
+  if (file.base64) {
+    const binary = atob(file.base64)
+    const bytes = Uint8Array.from(binary, c => c.charCodeAt(0))
+    content = new TextDecoder().decode(bytes)
+  }
+
+  return { path: file.path, sha: file.sha, content, size: file.size, url: file.url }
+}
+
+/**
+ * 获取文件内容（保留原始 base64，不做文本解码，适用于 png/jpg/webp 等二进制格式）
+ */
+export async function getFileBase64(
+  path: string
+): Promise<{ path: string; sha: string; base64Content?: string; size: number; url: string } | null> {
+  const file = await fetchRawFile(path)
+  if (!file) return null
+
+  return { path: file.path, sha: file.sha, base64Content: file.base64, size: file.size, url: file.url }
+}
+
+/**
+ * 只获取文件的 sha/size，不下载内容（用于推送前判断远端 sha，避免大文件被无谓下载一遍）
+ */
+async function getFileMeta(path: string): Promise<{ sha: string; size: number } | null> {
+  const client = getGitHubClient()
+  const config = getGitHubConfig()
+
+  try {
+    const { data } = await client.repos.getContent({
+      owner: config.owner,
+      repo: config.repo,
+      path,
+      ref: config.branch,
+    })
+
+    if (Array.isArray(data) || data.type !== 'file') {
+      return null
+    }
+
+    return { sha: data.sha, size: data.size }
+  } catch (error) {
+    const err = error as { status?: number }
+    if (err.status === 404) {
+      return null
+    }
+    throw new GitHubFileError(`Failed to get file meta: ${path}`, error as Error)
   }
 }
 
@@ -69,7 +148,8 @@ export async function putFile(
 }
 
 /**
- * 创建或更新已编码为 base64 的文件内容
+ * 创建或更新已编码为 base64 的文件内容。
+ * 超过 Contents API 内联上限时自动改走 Blobs/Trees API。
  */
 export async function putFileBase64(
   path: string,
@@ -77,6 +157,10 @@ export async function putFileBase64(
   message: string,
   sha?: string
 ): Promise<{ sha: string; url: string }> {
+  if (estimateBase64ByteSize(base64Content) > CONTENTS_API_MAX_BYTES) {
+    return putLargeFileViaBlobsApi(path, base64Content, message)
+  }
+
   const client = getGitHubClient()
   const config = getGitHubConfig()
 
@@ -104,8 +188,7 @@ export async function putFileBase64(
 
   let fileSha = sha
   if (!fileSha) {
-    const existing = await getFile(path)
-    fileSha = existing?.sha
+    fileSha = (await getFileMeta(path))?.sha
   }
 
   let lastError: unknown
@@ -122,12 +205,89 @@ export async function putFileBase64(
       }
       // 退避后重新拉取最新 SHA 再试
       await delay(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)])
-      const existing = await getFile(path)
-      fileSha = existing?.sha
+      fileSha = (await getFileMeta(path))?.sha
     }
   }
 
   throw new GitHubFileError(`Failed to put file: ${path}`, lastError as Error)
+}
+
+/**
+ * 通过 Git Data API（blob -> tree -> commit -> ref）写入超过 Contents API
+ * 内联上限的大文件。ref 更新有自己的乐观并发窗口（getRef 之后 ref 可能被
+ * 并发推送移动），因此单独实现「重新取 ref/树 -> 重建 commit -> 重试
+ * updateRef」的退避重试，不能复用 Contents API 那一套基于文件 sha 的重试。
+ */
+async function putLargeFileViaBlobsApi(
+  path: string,
+  base64Content: string,
+  message: string
+): Promise<{ sha: string; url: string }> {
+  const client = getGitHubClient()
+  const config = getGitHubConfig()
+
+  const { data: blob } = await client.git.createBlob({
+    owner: config.owner,
+    repo: config.repo,
+    content: base64Content,
+    encoding: 'base64',
+  })
+
+  const MAX_ATTEMPTS = 4
+  const BACKOFF_MS = [250, 500, 1000]
+
+  let lastError: unknown
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const { data: ref } = await client.git.getRef({
+        owner: config.owner,
+        repo: config.repo,
+        ref: `heads/${config.branch}`,
+      })
+      const parentCommitSha = ref.object.sha
+
+      const { data: parentCommit } = await client.git.getCommit({
+        owner: config.owner,
+        repo: config.repo,
+        commit_sha: parentCommitSha,
+      })
+
+      const { data: tree } = await client.git.createTree({
+        owner: config.owner,
+        repo: config.repo,
+        base_tree: parentCommit.tree.sha,
+        tree: [{ path, mode: '100644', type: 'blob', sha: blob.sha }],
+      })
+
+      const { data: commit } = await client.git.createCommit({
+        owner: config.owner,
+        repo: config.repo,
+        message,
+        tree: tree.sha,
+        parents: [parentCommitSha],
+      })
+
+      await client.git.updateRef({
+        owner: config.owner,
+        repo: config.repo,
+        ref: `heads/${config.branch}`,
+        sha: commit.sha,
+      })
+
+      return { sha: blob.sha, url: blob.url || '' }
+    } catch (error) {
+      lastError = error
+      const err = error as { status?: number }
+      // 422 常见于 ref 在 getRef 之后被并发推送移动（non-fast-forward）
+      const isRefConflict = err.status === 422 || err.status === 409
+      if (!isRefConflict || attempt === MAX_ATTEMPTS - 1) {
+        break
+      }
+      await delay(BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)])
+    }
+  }
+
+  throw new GitHubFileError(`Failed to put large file via blobs API: ${path}`, lastError as Error)
 }
 
 function delay(ms: number): Promise<void> {

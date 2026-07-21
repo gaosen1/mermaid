@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { db } from '@/db'
 import { useSyncStore } from '@/stores/syncStore'
 import {
@@ -125,6 +126,9 @@ export function ConflictDialog({ open, onOpenChange }: ConflictDialogProps) {
       }
     } catch (error) {
       console.error('Failed to resolve conflict:', error)
+      toast.error('解决冲突失败', {
+        description: error instanceof Error ? error.message : String(error),
+      })
     } finally {
       setIsResolving(false)
     }
@@ -134,14 +138,28 @@ export function ConflictDialog({ open, onOpenChange }: ConflictDialogProps) {
   const handleResolveAll = async (keepVersion: 'local' | 'remote') => {
     setIsResolving(true)
     try {
-      for (const conflict of conflicts) {
-        await applyResolution(conflict, keepVersion)
-      }
+      const results = await Promise.allSettled(
+        conflicts.map((conflict) => applyResolution(conflict, keepVersion))
+      )
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected')
 
+      await loadConflicts()
       await refreshStats()
-      onOpenChange(false)
+
+      if (failures.length > 0) {
+        toast.error(`${failures.length} 个冲突解决失败`, {
+          description: failures
+            .map((f) => (f.reason instanceof Error ? f.reason.message : String(f.reason)))
+            .join('；'),
+        })
+      } else {
+        onOpenChange(false)
+      }
     } catch (error) {
       console.error('Failed to resolve conflicts:', error)
+      toast.error('解决冲突失败', {
+        description: error instanceof Error ? error.message : String(error),
+      })
     } finally {
       setIsResolving(false)
     }

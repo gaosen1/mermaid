@@ -92,3 +92,14 @@ function parseImageDataUrl(dataUrl: string): { mimeType: string; base64: string 
   if (!mimeMatch || !base64) throw new Error('Invalid image data URL')
   return { mimeType: mimeMatch[1], base64 }
 }
+
+const IMAGE_MIME_BY_TYPE: Record<'png' | 'jpg' | 'webp', string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  webp: 'image/webp',
+}
+
+/** 由二进制类型 + base64 内容重建图片 data URL（getPngDataUrlBase64 的逆操作） */
+export function buildImageDataUrl(type: 'png' | 'jpg' | 'webp', base64: string): string {
+  return `data:${IMAGE_MIME_BY_TYPE[type]};base64,${base64}`
+}
