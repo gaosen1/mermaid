@@ -74,6 +74,32 @@ function saveCanvasState(diagramId: string, state: CanvasState) {
   }
 }
 
+const CANVAS_VISIBLE_MARGIN = 40
+
+function clampOffset(
+  offsetX: number,
+  offsetY: number,
+  scale: number,
+  previewW: number,
+  previewH: number,
+  contentEl: Element | null,
+): { offsetX: number; offsetY: number } {
+  if (!contentEl || previewW === 0 || previewH === 0) return { offsetX, offsetY }
+  const cw = (contentEl as HTMLElement).offsetWidth
+  const ch = (contentEl as HTMLElement).offsetHeight
+  if (cw === 0 || ch === 0) return { offsetX, offsetY }
+  const sw = cw * scale
+  const sh = ch * scale
+  const minX = -sw + CANVAS_VISIBLE_MARGIN
+  const maxX = previewW - CANVAS_VISIBLE_MARGIN
+  const minY = -sh + CANVAS_VISIBLE_MARGIN
+  const maxY = previewH - CANVAS_VISIBLE_MARGIN
+  return {
+    offsetX: Math.max(minX, Math.min(maxX, offsetX)),
+    offsetY: Math.max(minY, Math.min(maxY, offsetY)),
+  }
+}
+
 export function MarkdownTableEditor({
   diagramId,
   sidebarWidth = 0,
@@ -192,13 +218,15 @@ export function MarkdownTableEditor({
       // 鼠标相对于容器的坐标
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
+      const content = preview.querySelector('.md-prose')
       setCanvasState((prev) => {
         const newScale = Math.max(0.1, Math.min(3, prev.scale * delta))
         // 保持鼠标指向的内容点不动：
         // mouseX = offsetX + contentX * scale  =>  contentX = (mouseX - offsetX) / scale
         // 新 offsetX = mouseX - contentX * newScale
-        const offsetX = mouseX - ((mouseX - prev.offsetX) / prev.scale) * newScale
-        const offsetY = mouseY - ((mouseY - prev.offsetY) / prev.scale) * newScale
+        const rawX = mouseX - ((mouseX - prev.offsetX) / prev.scale) * newScale
+        const rawY = mouseY - ((mouseY - prev.offsetY) / prev.scale) * newScale
+        const { offsetX, offsetY } = clampOffset(rawX, rawY, newScale, preview.clientWidth, preview.clientHeight, content)
         const updated = { ...prev, scale: newScale, offsetX, offsetY }
         saveCanvasState(diagramId, updated)
         return updated
@@ -220,12 +248,12 @@ export function MarkdownTableEditor({
 
       lastMousePosRef.current = { x: e.clientX, y: e.clientY }
 
+      const content = preview.querySelector('.md-prose')
       setCanvasState((prev) => {
-        const updated = {
-          ...prev,
-          offsetX: prev.offsetX + deltaX,
-          offsetY: prev.offsetY + deltaY,
-        }
+        const rawX = prev.offsetX + deltaX
+        const rawY = prev.offsetY + deltaY
+        const { offsetX, offsetY } = clampOffset(rawX, rawY, prev.scale, preview.clientWidth, preview.clientHeight, content)
+        const updated = { ...prev, offsetX, offsetY }
         saveCanvasState(diagramId, updated)
         return updated
       })
@@ -239,11 +267,18 @@ export function MarkdownTableEditor({
       e.preventDefault()
     }
 
+    const handleDblClick = () => {
+      const next: CanvasState = { scale: 1, offsetX: 0, offsetY: 0 }
+      setCanvasState(next)
+      saveCanvasState(diagramId, next)
+    }
+
     preview.addEventListener('wheel', handleWheel, { passive: false })
     preview.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
     preview.addEventListener('contextmenu', handleContextMenu)
+    preview.addEventListener('dblclick', handleDblClick)
 
     return () => {
       preview.removeEventListener('wheel', handleWheel)
@@ -251,7 +286,32 @@ export function MarkdownTableEditor({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       preview.removeEventListener('contextmenu', handleContextMenu)
+      preview.removeEventListener('dblclick', handleDblClick)
     }
+  }, [diagramId])
+
+  useEffect(() => {
+    const preview = previewRef.current
+    if (!preview) return
+    const frame = requestAnimationFrame(() => {
+      const content = preview.querySelector('.md-prose')
+      if (!content) return
+      setCanvasState((prev) => {
+        const { offsetX, offsetY } = clampOffset(
+          prev.offsetX,
+          prev.offsetY,
+          prev.scale,
+          preview.clientWidth,
+          preview.clientHeight,
+          content,
+        )
+        if (offsetX === prev.offsetX && offsetY === prev.offsetY) return prev
+        const updated = { ...prev, offsetX, offsetY }
+        saveCanvasState(diagramId, updated)
+        return updated
+      })
+    })
+    return () => cancelAnimationFrame(frame)
   }, [diagramId])
 
   const togglePanel = useCallback(() => {
@@ -264,6 +324,12 @@ export function MarkdownTableEditor({
     setSource(newSource)
     setHasChanges(true)
   }, [])
+
+  const resetCanvas = useCallback(() => {
+    const next: CanvasState = { scale: 1, offsetX: 0, offsetY: 0 }
+    setCanvasState(next)
+    saveCanvasState(diagramId, next)
+  }, [diagramId])
 
   const handleExportSource = useCallback(async () => {
     if (!currentDiagram || currentDiagram.type !== 'markdown') return
@@ -302,7 +368,10 @@ export function MarkdownTableEditor({
           }}
         >
           <style>{`
-            .md-prose { font-size: 14px; line-height: 1.7; color: var(--foreground); }
+            .md-prose {
+              width: 800px; max-width: 800px; font-size: 14px; line-height: 1.7;
+              color: var(--foreground); overflow-wrap: anywhere; word-break: break-word;
+            }
             .md-prose h1,.md-prose h2,.md-prose h3,.md-prose h4,.md-prose h5,.md-prose h6 {
               font-weight: 600; margin: 1.2em 0 0.4em; line-height: 1.3;
             }
@@ -310,7 +379,9 @@ export function MarkdownTableEditor({
             .md-prose h2 { font-size: 1.4em; border-bottom: 1px solid var(--border); padding-bottom: 0.2em; }
             .md-prose h3 { font-size: 1.15em; }
             .md-prose p { margin: 0.6em 0; }
-            .md-prose ul,.md-prose ol { padding-left: 1.6em; margin: 0.6em 0; }
+            .md-prose ul,.md-prose ol { padding-left: 1.6em; margin: 0.6em 0; list-style-position: outside; }
+            .md-prose ul { list-style-type: disc; }
+            .md-prose ol { list-style-type: decimal; }
             .md-prose li { margin: 0.2em 0; }
             .md-prose code {
               background: var(--muted); border-radius: 3px;
@@ -327,9 +398,10 @@ export function MarkdownTableEditor({
             }
             .md-prose hr { border: none; border-top: 1px solid var(--border); margin: 1.2em 0; }
             .md-prose a { color: var(--primary); text-decoration: underline; }
-            .md-prose table { border-collapse: collapse; margin: 0.8em 0; }
+            .md-prose table { border-collapse: collapse; table-layout: fixed; max-width: 100%; margin: 0.8em 0; }
             .md-prose th,.md-prose td {
               border: 1px solid var(--border); padding: 0.4em 0.8em; text-align: left;
+              overflow-wrap: anywhere; word-break: break-word;
             }
             .md-prose th { background: var(--muted); font-weight: 600; }
             .md-prose tr:nth-child(even) td { background: hsl(var(--muted)/0.4); }
@@ -341,10 +413,21 @@ export function MarkdownTableEditor({
         </div>
 
         {/* Canvas controls hint */}
-        <div className="absolute bottom-2 left-2 text-xs text-muted-foreground pointer-events-none">
+        <div className="absolute bottom-2 left-2 text-xs text-muted-foreground pointer-events-none space-y-0.5">
           <div>🖱️ 滚轮: 缩放</div>
           <div>🖱️ 右键拖拽: 移动</div>
+          <div>🖱️ 双击: 重置视图</div>
         </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={resetCanvas}
+          className="absolute bottom-2 right-2 h-7 text-xs bg-background/80 backdrop-blur-sm shadow-sm"
+          title="重置视图（缩放 100% / 居中）"
+        >
+          重置视图
+        </Button>
       </div>
 
       {/* Editor panel */}

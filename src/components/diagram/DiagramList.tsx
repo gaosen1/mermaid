@@ -57,7 +57,7 @@ const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
   png: 'PNG',
   jpg: 'JPG',
   webp: 'WebP',
-  markdown: 'Markdown 表格',
+  markdown: 'Markdown',
   txt: '纯文本 (TXT)',
 }
 
@@ -878,7 +878,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                     <SelectItem value="mermaid">Mermaid</SelectItem>
                     <SelectItem value="html">HTML</SelectItem>
                     <SelectItem value="svg">SVG</SelectItem>
-                    <SelectItem value="markdown">Markdown 表格</SelectItem>
+                    <SelectItem value="markdown">Markdown</SelectItem>
                     <SelectItem value="txt">纯文本 (TXT)</SelectItem>
                     <SelectItem value="png">PNG</SelectItem>
                     <SelectItem value="jpg">JPG</SelectItem>
@@ -1016,7 +1016,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   <SelectItem value="mermaid">Mermaid</SelectItem>
                   <SelectItem value="html">HTML</SelectItem>
                   <SelectItem value="svg">SVG</SelectItem>
-                  <SelectItem value="markdown">Markdown 表格</SelectItem>
+                  <SelectItem value="markdown">Markdown</SelectItem>
                   <SelectItem value="txt">纯文本 (TXT)</SelectItem>
                   <SelectItem value="png">PNG</SelectItem>
                   <SelectItem value="jpg">JPG</SelectItem>
