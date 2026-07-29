@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react'
 import { saveAs } from 'file-saver'
+import JSZip from 'jszip'
 import { BookOpenText, Check, Copy, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -49,7 +50,7 @@ const LLM_PROMPT = `请为我生成 Mermaid 代码，并遵守以下平台支持
    - animation:mermaid-edge-dash 0.6s linear infinite
    - animation:mermaid-edge-dash-leader 3s linear infinite
    - animation:mermaid-edge-dash-leader 1.2s linear infinite
-9. 颜色请使用清晰的浅色填充、深色边框和深色文字，保证可读性。
+9. 如无特殊说明，自定义样式优先使用暗色主题：深色填充搭配高对比度的浅色文字和边框，保证可读性。
 10. 节点 ID 使用英文、数字或下划线，避免中文 ID；中文放在节点文本里。
 
 请基于我的需求生成一份结构清晰、颜色分组明确、包含必要自定义样式的 Mermaid 图。`
@@ -73,6 +74,7 @@ description: 生成或修改 Mermaid flowchart/graph 图表代码，且需要用
 - 只输出 Mermaid 代码本身，不要输出代码块之外的解释文字。
 - 节点文字用双引号包裹，例如 A["节点文本"]；需要换行时用 <br>，不要用真实换行符（会被解析成新语句）。
 - 节点 ID 用英文字母、数字或下划线，避免中文，中文内容放进节点文本里。
+- 如无特殊说明，自定义样式优先使用暗色主题：节点采用深色 fill，搭配高对比度的浅色 stroke 和 color，保证可读性。
 
 ## 节点扩展语法：NODE_ID@{...}
 
@@ -120,7 +122,7 @@ ${FENCE}
 
 ## 配色建议
 
-浅色填充 + 深色边框 + 深色文字，保证文字在填充色上可读；用颜色给节点分组时，同一组内颜色尽量统一。
+如无特殊说明，优先使用暗色主题：深色填充搭配高对比度的浅色边框和文字，保证文字可读；用颜色给节点分组时，同一组内颜色尽量统一。
 
 ## 完整示例
 
@@ -145,9 +147,11 @@ export function MermaidDslHelpDialog({ open, onOpenChange }: MermaidDslHelpDialo
     window.setTimeout(() => setCopiedTarget(null), 1400)
   }, [])
 
-  const handleDownloadSkill = useCallback(() => {
-    const blob = new Blob([SKILL_MD], { type: 'text/markdown;charset=utf-8' })
-    saveAs(blob, 'SKILL.md')
+  const handleDownloadSkill = useCallback(async () => {
+    const zip = new JSZip()
+    zip.file('mermaid-custom-syntax/SKILL.md', SKILL_MD)
+    const blob = await zip.generateAsync({ type: 'blob' })
+    saveAs(blob, 'mermaid-custom-syntax.zip')
   }, [])
 
   return (
