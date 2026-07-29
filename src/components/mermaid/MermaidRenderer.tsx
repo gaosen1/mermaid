@@ -125,7 +125,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
   (
     {
       source,
-      layout = 'elk',
+      layout = 'dagre',
       theme = 'base',
       className = '',
       showControls = true,

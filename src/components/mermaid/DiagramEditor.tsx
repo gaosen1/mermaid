@@ -190,9 +190,16 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     setEditorState(prev => ({ ...prev, source: newSource, hasChanges: true }))
   }, [])
 
-  const setLayout = useCallback((newLayout: LayoutType) => {
+  const setLayout = useCallback(async (newLayout: LayoutType) => {
+    if (!currentDiagram || newLayout === layout) return
+
     setEditorState(prev => ({ ...prev, layout: newLayout }))
-  }, [])
+    await updateDiagram(diagramId, {
+      source,
+      config: { ...currentDiagram.config, layout: newLayout },
+    })
+    setEditorState(prev => ({ ...prev, hasChanges: false }))
+  }, [currentDiagram, diagramId, layout, source, updateDiagram])
 
   const setTheme = useCallback((newTheme: 'default' | 'dark' | 'forest' | 'neutral' | 'base') => {
     setEditorState(prev => ({ ...prev, theme: newTheme }))

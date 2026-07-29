@@ -46,7 +46,7 @@ function getElkConfig(layout: LayoutType) {
 }
 
 export async function initMermaid(
-  layout: LayoutType = 'elk',
+  layout: LayoutType = 'dagre',
   theme: string = 'base'
 ): Promise<void> {
   if (!initialized) {

@@ -186,13 +186,32 @@ db.version(8).stores({
   syncQueue: '++id, entityType, entityId, priority, createdAt',
 })
 
+// 版本 9：默认布局从 ELK 切换为 Dagre
+db.version(9)
+  .stores({
+    projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+    diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+    folders: 'id, projectId, parentId, name, order, updatedAt, syncStatus, lastSyncTime',
+    folderCollapse: 'folderId, projectId',
+    snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+    settings: 'id',
+    syncLog: '++id, timestamp, status, entityType, entityId',
+    syncQueue: '++id, entityType, entityId, priority, createdAt',
+  })
+  .upgrade(async (tx) => {
+    const settings = await tx.table('settings').get('default') as UserSettings | undefined
+    if (settings?.defaultLayout === 'elk') {
+      await tx.table('settings').update('default', { defaultLayout: 'dagre' })
+    }
+  })
+
 export { db }
 
 export const DEFAULT_SETTINGS: UserSettings = {
   id: 'default',
   language: 'zh',
   theme: 'system',
-  defaultLayout: 'elk',
+  defaultLayout: 'dagre',
   defaultExportFormat: 'png',
   renderTheme: 'base',
   autoSaveInterval: 30000,

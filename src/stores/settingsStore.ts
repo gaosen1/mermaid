@@ -22,7 +22,9 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   updateSettings: async (updates) => {
-    await db.settings.update('default', updates)
+    const existing = await db.settings.get('default')
+    const settings = { ...(existing ?? DEFAULT_SETTINGS), ...updates }
+    await db.settings.put(settings)
     set((state) => ({
       settings: { ...state.settings, ...updates },
     }))
