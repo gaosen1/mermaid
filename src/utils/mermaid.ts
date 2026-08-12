@@ -79,8 +79,59 @@ export async function renderMermaid(
   source: string,
   containerId: string
 ): Promise<{ svg: string }> {
-  const { svg } = await mermaid.render(containerId, source)
-  return { svg }
+  try {
+    const { svg } = await mermaid.render(containerId, source)
+    return { svg }
+  } catch (err) {
+    if (!isLinkStyleOverflowError(err, source)) throw err
+
+    // mermaid 解析阶段对越界的 linkStyle 编号会直接崩溃（edge.style 写到 undefined）。
+    // 平台侧容错：从最大编号开始逐条移除 linkStyle 行并重试。
+    let current = source
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const stripped = stripLargestLinkStyle(current)
+      if (stripped === current) throw err
+      current = stripped
+      try {
+        const { svg } = await mermaid.render(`${containerId}-ls${attempt}`, current)
+        return { svg }
+      } catch (retryErr) {
+        if (!isLinkStyleOverflowError(retryErr, current)) throw retryErr
+      }
+    }
+    throw err
+  }
+}
+
+function isLinkStyleOverflowError(err: unknown, source: string): boolean {
+  return (
+    err instanceof TypeError &&
+    err.message.includes("setting 'style'") &&
+    /linkStyle/.test(source)
+  )
+}
+
+const LINK_STYLE_LINE_REGEX = /^[ \t]*linkStyle[ \t]+\d+\b.*$/gm
+
+function stripLargestLinkStyle(source: string): string {
+  let maxIndex = -1
+  let maxStart = -1
+  let maxEnd = -1
+
+  for (const match of source.matchAll(LINK_STYLE_LINE_REGEX)) {
+    const index = Number(match[0].match(/linkStyle[ \t]+(\d+)/)?.[1])
+    if (index > maxIndex) {
+      maxIndex = index
+      maxStart = match.index ?? 0
+      maxEnd = maxStart + match[0].length
+    }
+  }
+
+  if (maxIndex < 0) return source
+
+  let end = maxEnd
+  if (source[end] === '\n') end += 1
+  return source.slice(0, maxStart) + source.slice(end)
 }
 
 export function getSvgFromContainer(container: HTMLElement): string | null {

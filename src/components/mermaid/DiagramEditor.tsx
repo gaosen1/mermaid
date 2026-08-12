@@ -4,6 +4,7 @@ import { CodeEditor } from './CodeEditor'
 import { EdgeStylePanel } from './EdgeStylePanel'
 import { NodeStylePanel } from './NodeStylePanel'
 import { MermaidDslHelpDialog } from './MermaidDslHelpDialog'
+import { AiChatPanel } from './AiChatPanel'
 import { useSourceSync } from './useSourceSync'
 import { useInlineTextEdit } from './useInlineTextEdit'
 import { Button } from '@/components/ui/button'
@@ -23,7 +24,7 @@ import {
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useFolderStore } from '@/stores/folderStore'
-import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText } from 'lucide-react'
+import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText, Sparkles } from 'lucide-react'
 import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import {
   parseNodeStyleFromSource,
@@ -86,7 +87,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     hasChanges: false,
   })
   const [panelState, setPanelState] = useState<EditorPanelState>(loadEditorState)
-  const [activeTab, setActiveTab] = useState<'code' | 'history'>('code')
+  const [activeTab, setActiveTab] = useState<'code' | 'history' | 'ai'>('code')
   const [isPanelHovered, setIsPanelHovered] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
@@ -189,6 +190,13 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const handleSourceChange = useCallback((newSource: string) => {
     setEditorState(prev => ({ ...prev, source: newSource, hasChanges: true }))
   }, [])
+
+  // 应用 AI 代码前先给当前代码留一个回滚快照，并立即刷新历史列表
+  const handleApplyAiSource = useCallback(async (newSource: string) => {
+    if (!currentDiagram || newSource === source) return
+    await createSnapshot(currentDiagram.id, source, 'AI 应用前')
+    handleSourceChange(newSource)
+  }, [createSnapshot, currentDiagram, source, handleSourceChange])
 
   const setLayout = useCallback(async (newLayout: LayoutType) => {
     if (!currentDiagram || newLayout === layout) return
@@ -581,6 +589,17 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
             <History className="h-3.5 w-3.5 inline mr-1" />
             历史
           </button>
+          <button
+            className={`diagram-editor-tab-ai flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'ai'
+                ? 'text-foreground border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('ai')}
+          >
+            <Sparkles className="h-3.5 w-3.5 inline mr-1" />
+            AI
+          </button>
         </div>
 
         {/* 内容区 - 带自定义滚动条 */}
@@ -602,7 +621,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
               className="h-full border-0 rounded-none"
               darkMode={isDarkMode}
             />
-          ) : (
+          ) : activeTab === 'history' ? (
             <div className="diagram-editor-history-list h-full overflow-auto p-3 space-y-2">
               {snapshots.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
@@ -644,7 +663,12 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
                 ))
               )}
             </div>
-          )}
+          ) : null}
+
+          {/* AI 面板保持挂载，切换标签不丢失对话 */}
+          <div className={`h-full ${activeTab === 'ai' ? '' : 'hidden'}`}>
+            <AiChatPanel source={source} onApplySource={handleApplyAiSource} />
+          </div>
         </div>
       </div>
 
