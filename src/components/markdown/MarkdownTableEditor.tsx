@@ -12,7 +12,8 @@ import {
 import { useSettingsStore } from '@/stores/settingsStore'
 import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
-import { renderMarkdown } from '@/utils/markdown'
+import { renderMarkdown, splitMermaidSegments } from '@/utils/markdown'
+import { MermaidBlock, type MermaidBlockTheme } from './MermaidBlock'
 import { getFolderPath } from '@/utils/folder'
 import { getDiagramFilename } from '@/utils/diagram'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -340,6 +341,12 @@ export function MarkdownTableEditor({
     })
   }, [currentDiagram, source])
 
+  const { html: renderedHtml, mermaidBlocks } = renderMarkdown(source)
+
+  // ```mermaid 代码块：跟随设置主题，深色模式下切换 dark 主题，布局支持块内 Frontmatter 覆盖
+  const mermaidTheme: MermaidBlockTheme = isDarkMode ? 'dark' : settings.renderTheme
+  const segments = splitMermaidSegments(renderedHtml, mermaidBlocks)
+
   if (!currentDiagram || currentDiagram.type !== 'markdown') {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
@@ -347,8 +354,6 @@ export function MarkdownTableEditor({
       </div>
     )
   }
-
-  const renderedHtml = renderMarkdown(source)
 
   const editorLeft = sidebarWidth === 0 ? 12 : sidebarWidth + 4
   const editorTop = sidebarWidth === 0 ? 60 : 12
@@ -405,11 +410,51 @@ export function MarkdownTableEditor({
             }
             .md-prose th { background: var(--muted); font-weight: 600; }
             .md-prose tr:nth-child(even) td { background: hsl(var(--muted)/0.4); }
+            .md-prose .md-mermaid {
+              margin: 0.8em 0; padding: 0.8em;
+              border: 1px solid var(--border); border-radius: 6px;
+              background: var(--background); overflow-x: auto; text-align: center;
+            }
+            .md-prose .md-mermaid svg { max-width: 100%; height: auto; }
+            .md-prose .md-mermaid-loading {
+              padding: 1em 0; text-align: center;
+              color: var(--muted-foreground); font-size: 0.9em;
+            }
+            .md-prose .md-mermaid-error-title {
+              color: var(--destructive); font-weight: 600;
+              margin-bottom: 0.4em; text-align: left; font-size: 0.9em;
+            }
+            .md-prose .md-mermaid-error-msg {
+              color: var(--muted-foreground); font-family: monospace;
+              font-size: 0.8em; line-height: 1.5;
+              white-space: pre-wrap; text-align: left;
+              margin: 0 0 0.5em;
+            }
+            .md-prose .md-mermaid-error-source {
+              background: var(--muted); border-radius: 6px;
+              padding: 0.8em; overflow-x: auto; margin: 0;
+              font-family: monospace; font-size: 0.85em; text-align: left;
+              white-space: pre;
+            }
           `}</style>
-          <div
-            className="md-prose"
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
-          />
+          <div className="md-prose">
+            {mermaidBlocks.length === 0 ? (
+              <div dangerouslySetInnerHTML={{ __html: renderedHtml }} />
+            ) : (
+              segments.map((segment, index) =>
+                segment.type === 'html' ? (
+                  <div key={`html-${index}`} dangerouslySetInnerHTML={{ __html: segment.html }} />
+                ) : (
+                  <MermaidBlock
+                    key={`mermaid-${index}`}
+                    source={segment.source}
+                    theme={mermaidTheme}
+                    layout={settings.defaultLayout}
+                  />
+                )
+              )
+            )}
+          </div>
         </div>
 
         {/* Canvas controls hint */}
