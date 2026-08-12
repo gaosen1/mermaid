@@ -98,6 +98,30 @@ export interface UserSettings {
   autoSaveInterval: number
 }
 
+/**
+ * AI 对话单条消息（持久化到 IndexedDB）
+ */
+export interface AiChatSessionMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  /** 模型推理内容（思考模式开启时） */
+  reasoning?: string
+  error?: boolean
+}
+
+/**
+ * AI 会话：一个 diagram 可对应多个会话
+ */
+export interface AiChatSession {
+  id: string
+  diagramId: string
+  title: string
+  createdAt: number
+  updatedAt: number
+  messages: AiChatSessionMessage[]
+}
+
 export interface GraphModel {
   id: string
   name: string

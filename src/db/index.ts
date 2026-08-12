@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Project, Diagram, DiagramFolder, FolderCollapseState, Snapshot, UserSettings } from '@/types'
+import type { Project, Diagram, DiagramFolder, FolderCollapseState, Snapshot, UserSettings, AiChatSession } from '@/types'
 import type { SyncLogEntry, SyncQueueItem } from '@/types/sync'
 
 const db = new Dexie('MermaidLocalDB') as Dexie & {
@@ -13,6 +13,8 @@ const db = new Dexie('MermaidLocalDB') as Dexie & {
   // 同步相关表
   syncLog: EntityTable<SyncLogEntry, 'id'>
   syncQueue: EntityTable<SyncQueueItem, 'id'>
+  // AI 会话表：一个 diagram 可对应多个会话
+  aiChats: EntityTable<AiChatSession, 'id'>
 }
 
 // 版本 1：原有结构
@@ -204,6 +206,19 @@ db.version(9)
       await tx.table('settings').update('default', { defaultLayout: 'dagre' })
     }
   })
+
+// 版本 10：AI 会话持久化
+db.version(10).stores({
+  projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+  diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+  folders: 'id, projectId, parentId, name, order, updatedAt, syncStatus, lastSyncTime',
+  folderCollapse: 'folderId, projectId',
+  snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+  settings: 'id',
+  syncLog: '++id, timestamp, status, entityType, entityId',
+  syncQueue: '++id, entityType, entityId, priority, createdAt',
+  aiChats: 'id, diagramId, updatedAt',
+})
 
 export { db }
 

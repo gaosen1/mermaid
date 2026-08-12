@@ -37,6 +37,11 @@ export function renderMarkdown(source: string): RenderedMarkdown {
   }
 }
 
+/** 纯 Markdown → HTML（不收集 mermaid 块，供聊天消息等场景直接渲染） */
+export function renderMarkdownToHtml(source: string): string {
+  return marked.parse(source) as string
+}
+
 // 预览分段：普通 HTML 片段与 mermaid 图表块交替，便于将图表块交给独立的 React 组件渲染
 export type MarkdownSegment =
   | { type: 'html'; html: string }

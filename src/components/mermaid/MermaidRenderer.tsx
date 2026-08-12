@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from 'react'
+import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef, useSyncExternalStore } from 'react'
 import {
   initMermaid,
   renderMermaid,
@@ -16,6 +16,7 @@ import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useNodeSelection, type SelectedNode } from './useNodeSelection'
 import { useViewTransform } from './useViewTransform'
 import { cleanupMermaidErrors, setupSvgEdgeInteraction, setupSvgNodeInteraction, setupSvgSubgraphInteraction } from './svgUtils'
+import { subscribeSpaceDown, isSpaceDown } from '@/utils/shortcuts'
 import { applyEdgeStyle, applyNodeStyle, applySubgraphStyle } from './svgStyleApplier'
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
@@ -166,6 +167,9 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       resetView,
       fitToContainer,
     } = useViewTransform({ wrapperRef, containerRef, diagramId })
+
+    // 空格按住时显示 grab 光标，提示可拖动画布
+    const spaceDown = useSyncExternalStore(subscribeSpaceDown, isSpaceDown)
 
     // 边缘选中
     const {
@@ -479,7 +483,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu}
-          style={{ cursor: isDragging ? 'grabbing' : 'default' }}
+          style={{ cursor: isDragging ? 'grabbing' : spaceDown ? 'grab' : 'default' }}
         >
           <div
             ref={containerRef}

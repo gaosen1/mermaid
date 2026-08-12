@@ -5,6 +5,7 @@
 import { useState, useRef, useCallback, useEffect, type RefObject } from 'react'
 import { VIEW_CONFIG } from './constants'
 import { getZoomState, saveZoomState } from '@/utils/zoomStorage'
+import { isSpaceDown, matchMouseDragShortcut } from '@/utils/shortcuts'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -172,7 +173,9 @@ export function useViewTransform({
   }, [handleWheel, wrapperRef])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (e.button === 2) {
+    // 快捷键模块匹配：右键拖动 / 空格+左键拖动（可扩展）
+    const shortcut = matchMouseDragShortcut({ button: e.button, spaceDown: isSpaceDown() })
+    if (shortcut && shortcut.id.startsWith('canvas.pan')) {
       e.preventDefault()
       setIsDragging(true)
       setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y })

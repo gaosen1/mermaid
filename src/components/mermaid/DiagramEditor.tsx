@@ -667,7 +667,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
           {/* AI 面板保持挂载，切换标签不丢失对话 */}
           <div className={`h-full ${activeTab === 'ai' ? '' : 'hidden'}`}>
-            <AiChatPanel source={source} onApplySource={handleApplyAiSource} />
+            <AiChatPanel diagramId={diagramId} source={source} onApplySource={handleApplyAiSource} />
           </div>
         </div>
       </div>
