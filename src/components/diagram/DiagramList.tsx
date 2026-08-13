@@ -49,6 +49,10 @@ import {
   Spline,
   Image,
   Table,
+  Sparkles,
+  Loader2,
+  FolderInput,
+  FilePlus2,
 } from 'lucide-react'
 const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
   mermaid: 'Mermaid',
@@ -59,6 +63,26 @@ const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
   webp: 'WebP',
   markdown: 'Markdown',
   txt: '纯文本 (TXT)',
+}
+
+// 留空创建时的默认名基础词（重名自动追加序号）
+const DEFAULT_NAME_BY_TYPE: Record<DiagramType, string> = {
+  mermaid: '未命名 Mermaid',
+  html: '未命名 HTML',
+  svg: '未命名 SVG',
+  png: '未命名图片',
+  jpg: '未命名图片',
+  webp: '未命名图片',
+  markdown: '未命名 Markdown',
+  txt: '未命名文本',
+}
+
+function generateUniqueName(base: string, existing: string[]): string {
+  const names = new Set(existing)
+  if (!names.has(base)) return base
+  let i = 2
+  while (names.has(`${base} ${i}`)) i++
+  return `${base} ${i}`
 }
 
 function DiagramTypeIcon({ type, className }: { type: DiagramType; className?: string }) {
@@ -113,6 +137,12 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { buildTree, getContainerItems, getContainerOf, getItemKind, type TreeNode } from './utils/diagramTree'
+import { AiOrganizeDialog } from './AiOrganizeDialog'
+import { MoveToFolderDialog, type MoveTargetItem } from './MoveToFolderDialog'
+import { ApiKeyDialog } from '@/components/mermaid/ApiKeyDialog'
+import { useAiNameSuggestions } from '@/components/mermaid/useAiNameSuggestions'
+import { getAiApiKey } from '@/utils/aiChat'
+import { isAiNameableType } from '@/utils/aiOrganize'
 
 interface DiagramListProps {
   projectId: string
@@ -129,6 +159,7 @@ interface SortableDiagramItemProps {
   onEdit: (diagram: Diagram) => void
   onExport: (diagram: Diagram) => void
   onDelete: (diagram: Diagram) => void
+  onMove: (diagram: Diagram) => void
   onClick: (e: React.MouseEvent<HTMLDivElement>, diagram: Diagram) => void
 }
 
@@ -140,6 +171,7 @@ function SortableDiagramItem({
   onEdit,
   onExport,
   onDelete,
+  onMove,
   onClick,
 }: SortableDiagramItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -177,11 +209,15 @@ function SortableDiagramItem({
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 hover:bg-muted">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMove(diagram) }}>
+            <FolderInput className="h-4 w-4 mr-2" />
+            移入目标路径
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(diagram) }}>
             <Pencil className="h-4 w-4 mr-2" />
             重命名
@@ -218,6 +254,7 @@ interface FolderItemProps {
   onDelete: (folder: DiagramFolder) => void
   onNewDiagram: (folderId: string) => void
   onNewSubfolder: (parentId: string) => void
+  onMove: (folder: DiagramFolder) => void
 }
 
 function FolderItem({
@@ -232,6 +269,7 @@ function FolderItem({
   onDelete,
   onNewDiagram,
   onNewSubfolder,
+  onMove,
 }: FolderItemProps) {
   // useSortable 负责拖拽排序（与图表同层混排）
   const {
@@ -284,20 +322,24 @@ function FolderItem({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 hover:bg-muted">
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNewDiagram(folder.id) }}>
-              <Plus className="h-4 w-4 mr-2" />
-              新建图表
+              <FilePlus2 className="h-4 w-4 mr-2" />
+              新建文件
             </DropdownMenuItem>
             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onNewSubfolder(folder.id) }}>
               <FolderPlus className="h-4 w-4 mr-2" />
-              新建子文件夹
+              新建文件夹
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onMove(folder) }}>
+              <FolderInput className="h-4 w-4 mr-2" />
+              移入目标路径
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onRename(folder) }}>
               <Pencil className="h-4 w-4 mr-2" />
               重命名
@@ -361,6 +403,8 @@ interface TreeRendererProps {
   onDeleteFolder: (f: DiagramFolder) => void
   onNewDiagramInFolder: (folderId: string) => void
   onNewSubfolder: (parentId: string) => void
+  onMoveDiagram: (d: Diagram) => void
+  onMoveFolder: (f: DiagramFolder) => void
 }
 
 function TreeRenderer({
@@ -380,6 +424,8 @@ function TreeRenderer({
   onDeleteFolder,
   onNewDiagramInFolder,
   onNewSubfolder,
+  onMoveDiagram,
+  onMoveFolder,
 }: TreeRendererProps) {
   return (
     <>
@@ -395,6 +441,7 @@ function TreeRenderer({
               onEdit={onEditDiagram}
               onExport={onExportDiagram}
               onDelete={onDeleteDiagram}
+              onMove={onMoveDiagram}
               onClick={onClickDiagram}
             />
           )
@@ -418,6 +465,7 @@ function TreeRenderer({
             onDelete={onDeleteFolder}
             onNewDiagram={onNewDiagramInFolder}
             onNewSubfolder={onNewSubfolder}
+            onMove={onMoveFolder}
           >
             <SortableContext items={childIds} strategy={verticalListSortingStrategy}>
               <TreeRenderer
@@ -437,6 +485,8 @@ function TreeRenderer({
                 onDeleteFolder={onDeleteFolder}
                 onNewDiagramInFolder={onNewDiagramInFolder}
                 onNewSubfolder={onNewSubfolder}
+                onMoveDiagram={onMoveDiagram}
+                onMoveFolder={onMoveFolder}
               />
             </SortableContext>
           </FolderItem>
@@ -494,6 +544,12 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [selectedItem, setSelectedItem] = useState<{ kind: 'diagram' | 'folder'; id: string } | null>(null)
   // 当前正在拖拽的 item id（用于 DragOverlay）
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  // AI 能力：命名建议（重命名弹窗）与目录整理
+  const nameSuggestions = useAiNameSuggestions()
+  const [organizeOpen, setOrganizeOpen] = useState(false)
+  const [aiKeyDialogOpen, setAiKeyDialogOpen] = useState(false)
+  // 「移入目标路径」弹窗的当前操作对象
+  const [moveItem, setMoveItem] = useState<MoveTargetItem | null>(null)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -645,8 +701,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   // ── Diagram CRUD ──
 
   const handleCreateDiagram = async () => {
-    if (!inputName.trim()) return
-    const diagram = await createDiagram(projectId, inputName, newDiagramType)
+    // 名称可留空：自动生成默认名，先进编辑器，稍后用 AI 命名
+    const name =
+      inputName.trim() ||
+      generateUniqueName(DEFAULT_NAME_BY_TYPE[newDiagramType], diagrams.map((d) => d.name))
+    const diagram = await createDiagram(projectId, name, newDiagramType)
     if (createDiagramFolderId) {
       await moveDiagramToFolder(diagram.id, createDiagramFolderId)
     }
@@ -696,13 +755,35 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     setInputName(diagram.name)
     setEditDiagramType(diagram.type)
     setEditDiagramOpen(true)
+    nameSuggestions.reset()
+  }
+
+  // AI 整理入口：未配置 Key 时先弹 Key 配置弹窗
+  const handleAiOrganizeClick = () => {
+    if (!getAiApiKey()) {
+      setAiKeyDialogOpen(true)
+      return
+    }
+    setOrganizeOpen(true)
+  }
+
+  // 「移入目标路径」：拖拽移入/移出文件夹的补充交互
+  const handleMoveItem = (item: MoveTargetItem, targetFolderId: string | null) => {
+    if (item.kind === 'diagram') {
+      moveDiagramToFolder(item.id, targetFolderId)
+    } else {
+      moveFolderToParent(item.id, targetFolderId)
+    }
+    setMoveItem(null)
   }
 
   // ── Folder CRUD ──
 
   const handleCreateFolder = async () => {
-    if (!inputName.trim()) return
-    await createFolder(projectId, inputName, createFolderParentId)
+    const name =
+      inputName.trim() ||
+      generateUniqueName('新建文件夹', folders.map((f) => f.name))
+    await createFolder(projectId, name, createFolderParentId)
     setInputName('')
     setCreateFolderParentId(null)
     setCreateFolderOpen(false)
@@ -862,12 +943,12 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               <DialogDescription>
                 {createDiagramFolderId
                   ? `在文件夹「${folders.find(f => f.id === createDiagramFolderId)?.name ?? ''}」中创建`
-                  : '默认创建 Mermaid 图表，也可以手动切换为 HTML、SVG、Markdown 或图片格式'}
+                  : '名称可留空（自动生成默认名），写好内容后可用 AI 命名'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>图表名称</Label>
+                <Label>图表名称（可留空）</Label>
                 <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateDiagram() }} placeholder="输入图表名称" />
               </div>
               <div className="space-y-2">
@@ -912,11 +993,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               <DialogDescription>
                 {createFolderParentId
                   ? `在「${folders.find(f => f.id === createFolderParentId)?.name ?? ''}」中创建子文件夹`
-                  : '在根目录创建文件夹'}
+                  : '在根目录创建文件夹，名称可留空'}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-2 py-4">
-              <Label>文件夹名称</Label>
+              <Label>文件夹名称（可留空）</Label>
               <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder() }} placeholder="输入文件夹名称" />
             </div>
             <DialogFooter>
@@ -933,6 +1014,15 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
           onClick={() => fileInputRef.current?.click()}
         >
           <Upload className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          title={diagrams.length < 3 ? '图表数少于 3 个，无需整理' : 'AI 整理目录'}
+          onClick={handleAiOrganizeClick}
+          disabled={diagrams.length < 3}
+        >
+          <Sparkles className="h-4 w-4" />
         </Button>
         <input
           ref={fileInputRef}
@@ -982,6 +1072,8 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   onDeleteFolder={handleDeleteFolder}
                   onNewDiagramInFolder={openCreateDiagramInFolder}
                   onNewSubfolder={openCreateSubfolder}
+                  onMoveDiagram={(d) => setMoveItem({ kind: 'diagram', id: d.id })}
+                  onMoveFolder={(f) => setMoveItem({ kind: 'folder', id: f.id })}
                 />
               </div>
             </SortableContext>
@@ -1006,7 +1098,57 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>图表名称</Label>
-              <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEditDiagram() }} placeholder="输入图表名称" />
+              <div className="flex gap-1.5">
+                <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleEditDiagram() }} placeholder="输入图表名称" />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  title={
+                    !editingDiagram || !isAiNameableType(editingDiagram.type)
+                      ? '该类型不支持 AI 命名'
+                      : editingDiagram.source?.trim()
+                        ? 'AI 命名'
+                        : '内容为空，无法 AI 命名'
+                  }
+                  disabled={
+                    nameSuggestions.loading ||
+                    !editingDiagram ||
+                    !isAiNameableType(editingDiagram.type) ||
+                    !editingDiagram.source?.trim()
+                  }
+                  onClick={() => {
+                    if (!editingDiagram) return
+                    nameSuggestions.generate({
+                      source: editingDiagram.source ?? '',
+                      type: editingDiagram.type,
+                      existingNames: diagrams.map((d) => d.name).filter((n) => n !== editingDiagram.name),
+                    })
+                  }}
+                >
+                  {nameSuggestions.loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+              {nameSuggestions.error && (
+                <div className="text-xs text-destructive">{nameSuggestions.error}</div>
+              )}
+              {nameSuggestions.names.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {nameSuggestions.names.map((name) => (
+                    <button
+                      key={name}
+                      className="rounded-full border px-2 py-0.5 text-xs hover:bg-accent"
+                      onClick={() => setInputName(name)}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-2">
               <Label>图表类型</Label>
@@ -1081,6 +1223,33 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* AI 目录整理 */}
+      <AiOrganizeDialog
+        open={organizeOpen}
+        onOpenChange={setOrganizeOpen}
+        projectId={projectId}
+        diagrams={diagrams}
+        folders={folders}
+      />
+
+      {/* 移入目标路径 */}
+      <MoveToFolderDialog
+        item={moveItem}
+        diagrams={diagrams}
+        folders={folders}
+        onOpenChange={(open) => {
+          if (!open) setMoveItem(null)
+        }}
+        onMove={handleMoveItem}
+      />
+
+      {/* AI 功能共用的 API Key 配置弹窗 */}
+      <ApiKeyDialog open={aiKeyDialogOpen} onOpenChange={setAiKeyDialogOpen} />
+      <ApiKeyDialog
+        open={nameSuggestions.needKey}
+        onOpenChange={(v) => nameSuggestions.setNeedKey(v)}
+      />
     </div>
   )
 }

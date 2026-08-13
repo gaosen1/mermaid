@@ -5,6 +5,7 @@ import { EdgeStylePanel } from './EdgeStylePanel'
 import { NodeStylePanel } from './NodeStylePanel'
 import { MermaidDslHelpDialog } from './MermaidDslHelpDialog'
 import { AiChatPanel } from './AiChatPanel'
+import { AiNamePopover } from './AiNamePopover'
 import { useSourceSync } from './useSourceSync'
 import { useInlineTextEdit } from './useInlineTextEdit'
 import { Button } from '@/components/ui/button'
@@ -72,7 +73,7 @@ interface DiagramEditorProps {
 }
 
 export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = false }: DiagramEditorProps) {
-  const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
+  const { diagrams, currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
   const { settings } = useSettingsStore()
   const { folders } = useFolderStore()
 
@@ -487,6 +488,14 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
             {hasChanges && (
               <span className="text-xs text-orange-500 shrink-0">●</span>
             )}
+            <AiNamePopover
+              diagram={currentDiagram}
+              existingNames={diagrams.map((d) => d.name)}
+              source={source}
+              onApplyName={async (name) => {
+                await updateDiagram(currentDiagram.id, { name })
+              }}
+            />
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" onClick={togglePanel} title="收起面板" className="h-7 w-7">

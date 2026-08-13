@@ -15,15 +15,6 @@ import {
 import { db } from '@/db'
 import type { AiChatSession, AiChatSessionMessage } from '@/types'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,14 +29,13 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { renderMarkdownToHtml } from '@/utils/markdown'
+import { ApiKeyDialog } from './ApiKeyDialog'
 import {
   AI_MODELS,
   buildSystemPrompt,
-  clearAiApiKey,
   getAiApiKey,
   getStoredAiModel,
   requestAiCompletion,
-  setAiApiKey,
   storeAiModel,
   type AiMessage,
 } from '@/utils/aiChat'
@@ -93,7 +83,6 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
   const [loading, setLoading] = useState(false)
   const [hasKey, setHasKey] = useState(() => Boolean(getAiApiKey()))
   const [keyDialogOpen, setKeyDialogOpen] = useState(false)
-  const [keyDraft, setKeyDraft] = useState('')
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
   const [thinking, setThinking] = useState(() => localStorage.getItem('ai-chat-thinking') !== '0')
   const [withSkill, setWithSkill] = useState(() => localStorage.getItem('ai-chat-with-skill') !== '0')
@@ -149,18 +138,9 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
     }
   }
 
-  const handleSaveKey = () => {
-    if (!keyDraft.trim()) return
-    setAiApiKey(keyDraft)
-    setHasKey(true)
-    setKeyDialogOpen(false)
-    setKeyDraft('')
-  }
-
-  const handleClearKey = () => {
-    clearAiApiKey()
-    setHasKey(false)
-    setKeyDialogOpen(false)
+  const handleKeyDialogOpenChange = (open: boolean) => {
+    setKeyDialogOpen(open)
+    if (!open) setHasKey(Boolean(getAiApiKey()))
   }
 
   const handleSend = async () => {
@@ -168,7 +148,6 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
 
     const apiKey = getAiApiKey()
     if (!apiKey) {
-      setKeyDraft('')
       setKeyDialogOpen(true)
       return
     }
@@ -323,10 +302,7 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
           size="icon"
           className="h-7 w-7 shrink-0"
           title={hasKey ? '已配置 API Key，点击修改' : '配置千问云 API Key'}
-          onClick={() => {
-            setKeyDraft('')
-            setKeyDialogOpen(true)
-          }}
+          onClick={() => setKeyDialogOpen(true)}
         >
           <KeyRound className={`h-4 w-4 ${hasKey ? 'text-green-500' : ''}`} />
         </Button>
@@ -439,40 +415,8 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
         </div>
       </div>
 
-      {/* API Key 配置弹窗 */}
-      <Dialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen}>
-        <DialogContent className="max-w-sm!">
-          <DialogHeader>
-            <DialogTitle className="text-base">千问云 API Key</DialogTitle>
-            <DialogDescription>
-              Key 仅保存在浏览器本地，用于调用千问云 OpenAI 兼容接口。
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            type="password"
-            value={keyDraft}
-            onChange={(e) => setKeyDraft(e.target.value)}
-            placeholder="sk-..."
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSaveKey()
-            }}
-          />
-          <DialogFooter className="gap-2 sm:justify-between">
-            {hasKey ? (
-              <Button variant="ghost" size="sm" onClick={handleClearKey} className="text-destructive">
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
-                清除
-              </Button>
-            ) : (
-              <span />
-            )}
-            <Button size="sm" onClick={handleSaveKey} disabled={!keyDraft.trim()}>
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* API Key 配置弹窗（共享组件） */}
+      <ApiKeyDialog open={keyDialogOpen} onOpenChange={handleKeyDialogOpenChange} />
     </div>
   )
 }

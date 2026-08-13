@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
+import { toast } from 'sonner'
 import { db } from '@/db'
 import type { Diagram, DiagramConfig, DiagramType, Snapshot } from '@/types'
 
@@ -179,20 +180,22 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
 
   updateDiagram: async (id, updates) => {
     const updatedAt = Date.now()
-    await db.diagrams.update(id, { ...updates, updatedAt })
-    const diagram = await db.diagrams.get(id)
-    if (diagram) {
-      await db.projects.update(diagram.projectId, { updatedAt })
-    }
+    const patched = { ...updates, updatedAt }
+    const projectId = useDiagramStore.getState().diagrams.find((d) => d.id === id)?.projectId
+    // 乐观更新：先刷新视图，后台持久化，失败时显式提示
     set((state) => ({
-      diagrams: state.diagrams.map((d) =>
-        d.id === id ? { ...d, ...updates, updatedAt } : d
-      ),
+      diagrams: state.diagrams.map((d) => (d.id === id ? { ...d, ...patched } : d)),
       currentDiagram:
         state.currentDiagram?.id === id
-          ? { ...state.currentDiagram, ...updates, updatedAt }
+          ? { ...state.currentDiagram, ...patched }
           : state.currentDiagram,
     }))
+    db.diagrams
+      .update(id, patched)
+      .then(() => (projectId ? db.projects.update(projectId, { updatedAt }) : undefined))
+      .catch((err) => {
+        toast.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
+      })
   },
 
   deleteDiagram: async (id) => {
@@ -254,12 +257,16 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     const state = useDiagramStore.getState()
     const targetDiagrams = state.diagrams.filter((d) => (d.folderId ?? null) === folderId)
     const maxOrder = targetDiagrams.reduce((m, d) => Math.max(m, d.order ?? 0), -1)
-    await db.diagrams.update(diagramId, { folderId, order: maxOrder + 1, updatedAt: now })
+    const patched = { folderId, order: maxOrder + 1, updatedAt: now }
+    // 乐观更新：拖拽后立即反映视图，持久化失败再提示
     set((s) => ({
-      diagrams: s.diagrams.map((d) =>
-        d.id === diagramId ? { ...d, folderId, order: maxOrder + 1, updatedAt: now } : d
-      ),
+      diagrams: s.diagrams.map((d) => (d.id === diagramId ? { ...d, ...patched } : d)),
+      currentDiagram:
+        s.currentDiagram?.id === diagramId ? { ...s.currentDiagram, ...patched } : s.currentDiagram,
     }))
+    db.diagrams.update(diagramId, patched).catch((err) => {
+      toast.error('移动失败：' + (err instanceof Error ? err.message : String(err)))
+    })
   },
 
   loadSnapshots: async (diagramId) => {

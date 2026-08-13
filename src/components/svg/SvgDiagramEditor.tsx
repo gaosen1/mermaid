@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CodeEditor } from '@/components/mermaid/CodeEditor'
 import { SvgRenderer, type SvgRendererRef } from './SvgRenderer'
 import { useDiagramStore } from '@/stores/diagramStore'
+import { AiNamePopover } from '@/components/mermaid/AiNamePopover'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -52,7 +53,7 @@ export function SvgDiagramEditor({
   sidebarWidth = 0,
   sidebarAnimating = false,
 }: SvgDiagramEditorProps) {
-  const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
+  const { diagrams, currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } = useDiagramStore()
   const { settings } = useSettingsStore()
   const { folders } = useFolderStore()
 
@@ -221,6 +222,14 @@ export function SvgDiagramEditor({
             {hasChanges && (
               <span className="text-xs text-orange-500 shrink-0">●</span>
             )}
+            <AiNamePopover
+              diagram={currentDiagram}
+              existingNames={diagrams.map((d) => d.name)}
+              source={source}
+              onApplyName={async (name) => {
+                await updateDiagram(currentDiagram.id, { name })
+              }}
+            />
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" onClick={togglePanel} title="收起面板" className="h-7 w-7">

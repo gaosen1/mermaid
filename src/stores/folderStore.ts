@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
+import { toast } from 'sonner'
 import { db } from '@/db'
 import type { DiagramFolder } from '@/types'
 
@@ -60,12 +61,15 @@ export const useFolderStore = create<FolderState>((set) => ({
   },
 
   updateFolder: async (id, updates) => {
-    await db.folders.update(id, { ...updates, updatedAt: Date.now() })
+    const updatedAt = Date.now()
+    const patched = { ...updates, updatedAt }
+    // 乐观更新：先刷新视图，后台持久化，失败时显式提示
     set((state) => ({
-      folders: state.folders.map((f) =>
-        f.id === id ? { ...f, ...updates, updatedAt: Date.now() } : f
-      ),
+      folders: state.folders.map((f) => (f.id === id ? { ...f, ...patched } : f)),
     }))
+    db.folders.update(id, patched).catch((err) => {
+      toast.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
+    })
   },
 
   deleteFolder: async (id) => {
@@ -98,12 +102,14 @@ export const useFolderStore = create<FolderState>((set) => ({
 
     const targetSiblings = state.folders.filter((f) => (f.parentId ?? null) === newParentId)
     const newOrder = targetSiblings.length
-    await db.folders.update(folderId, { parentId: newParentId, order: newOrder, updatedAt: Date.now() })
+    const patched = { parentId: newParentId, order: newOrder, updatedAt: Date.now() }
+    // 乐观更新：拖拽后立即反映视图，持久化失败再提示
     set((s) => ({
-      folders: s.folders.map((f) =>
-        f.id === folderId ? { ...f, parentId: newParentId, order: newOrder, updatedAt: Date.now() } : f
-      ),
+      folders: s.folders.map((f) => (f.id === folderId ? { ...f, ...patched } : f)),
     }))
+    db.folders.update(folderId, patched).catch((err) => {
+      toast.error('移动失败：' + (err instanceof Error ? err.message : String(err)))
+    })
   },
 
   reorderFolders: async (folderIds) => {

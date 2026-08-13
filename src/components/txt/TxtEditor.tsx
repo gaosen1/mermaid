@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CodeEditor } from '@/components/mermaid/CodeEditor'
 import { useDiagramStore } from '@/stores/diagramStore'
+import { AiNamePopover } from '@/components/mermaid/AiNamePopover'
 import { useFolderStore } from '@/stores/folderStore'
 import { Button } from '@/components/ui/button'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -59,8 +60,16 @@ export function TxtEditor({
   sidebarWidth = 0,
   sidebarAnimating = false,
 }: TxtEditorProps) {
-  const { currentDiagram, updateDiagram, createSnapshot, loadSnapshots, snapshots, restoreSnapshot, deleteSnapshot } =
-    useDiagramStore()
+  const {
+    diagrams,
+    currentDiagram,
+    updateDiagram,
+    createSnapshot,
+    loadSnapshots,
+    snapshots,
+    restoreSnapshot,
+    deleteSnapshot,
+  } = useDiagramStore()
   const { settings } = useSettingsStore()
   const { folders } = useFolderStore()
 
@@ -80,6 +89,8 @@ export function TxtEditor({
   const autoSaveTimerRef = useRef<number | null>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const isRightMouseDownRef = useRef(false)
+  // 光标渲染用的镜像 state（ref 不能在 render 期间读取）
+  const [isPanning, setIsPanning] = useState(false)
   const lastMousePosRef = useRef({ x: 0, y: 0 })
 
   // dark mode 监听
@@ -157,6 +168,7 @@ export function TxtEditor({
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button === 2) {
         isRightMouseDownRef.current = true
+        setIsPanning(true)
         lastMousePosRef.current = { x: e.clientX, y: e.clientY }
       }
     }
@@ -173,7 +185,7 @@ export function TxtEditor({
       })
     }
 
-    const handleMouseUp = () => { isRightMouseDownRef.current = false }
+    const handleMouseUp = () => { isRightMouseDownRef.current = false; setIsPanning(false) }
     const handleContextMenu = (e: MouseEvent) => { e.preventDefault() }
 
     preview.addEventListener('wheel', handleWheel, { passive: false })
@@ -220,7 +232,7 @@ export function TxtEditor({
       <div
         ref={previewRef}
         className="absolute inset-0 bg-background overflow-hidden select-none"
-        style={{ cursor: isRightMouseDownRef.current ? 'grabbing' : 'default' }}
+        style={{ cursor: isPanning ? 'grabbing' : 'default' }}
       >
         <div
           className="inline-block origin-top-left"
@@ -268,6 +280,14 @@ export function TxtEditor({
               TXT
             </span>
             {hasChanges && <span className="text-xs text-orange-500 shrink-0">●</span>}
+            <AiNamePopover
+              diagram={currentDiagram}
+              existingNames={diagrams.map((d) => d.name)}
+              source={source}
+              onApplyName={async (name) => {
+                await updateDiagram(currentDiagram.id, { name })
+              }}
+            />
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <Button variant="ghost" size="icon" onClick={togglePanel} title="收起面板" className="h-7 w-7">
