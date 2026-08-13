@@ -11,7 +11,7 @@ import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter 
 import { saveAs } from 'file-saver'
 import { Button } from '@/components/ui/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
-import { RotateCcw, Loader2 } from 'lucide-react'
+import { RotateCcw, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useNodeSelection, type SelectedNode } from './useNodeSelection'
 import { useViewTransform } from './useViewTransform'
@@ -166,6 +166,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       handleMouseUp,
       resetView,
       fitToContainer,
+      zoomBy,
     } = useViewTransform({ wrapperRef, containerRef, diagramId })
 
     // 空格按住时显示 grab 光标，提示可拖动画布
@@ -451,7 +452,28 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     return (
       <div className={`relative h-full w-full ${className}`}>
         {showControls && (
-          <div className="absolute top-2 right-2 flex gap-2 z-10">
+          <div className="absolute top-2 right-2 flex gap-1 z-10 items-center">
+            <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
+              {Math.round(scale * 100)}%
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+              onClick={() => zoomBy(1 / 1.2)}
+              title="缩小"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-background/80 backdrop-blur-sm"
+              onClick={() => zoomBy(1.2)}
+              title="放大"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -483,6 +505,12 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu}
+          onDoubleClick={(e) => {
+            // 双击空白处重置视图；节点/连线上的双击交给选中/编辑逻辑
+            const target = e.target as Element
+            if (target.closest('.node, .cluster, .edgePath, .edgeLabel, .label')) return
+            resetView()
+          }}
           style={{ cursor: isDragging ? 'grabbing' : spaceDown ? 'grab' : 'default' }}
         >
           <div

@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Download, ImageIcon, RotateCcw } from 'lucide-react'
+import { Download, ImageIcon, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useFolderStore } from '@/stores/folderStore'
@@ -18,7 +18,7 @@ interface PngDiagramViewerProps {
 export function PngDiagramViewer({ diagramId, sidebarWidth = 0, sidebarAnimating = false }: PngDiagramViewerProps) {
   const { currentDiagram } = useDiagramStore()
   const { folders } = useFolderStore()
-  const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView } =
+  const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView, zoomBy } =
     useZoomPan(diagramId)
 
   const handleImageLoad = useCallback(
@@ -59,6 +59,24 @@ export function PngDiagramViewer({ diagramId, sidebarWidth = 0, sidebarAnimating
             <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
               {Math.round(scale * 100)}%
             </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-background/90 backdrop-blur"
+              onClick={() => zoomBy(1 / 1.2)}
+              title="缩小"
+            >
+              <ZoomOut className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 bg-background/90 backdrop-blur"
+              onClick={() => zoomBy(1.2)}
+              title="放大"
+            >
+              <ZoomIn className="h-4 w-4" />
+            </Button>
             <Button
               variant="outline"
               size="icon"

@@ -1,10 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { getZoomState, saveZoomState } from '@/utils/zoomStorage'
+import { bindGestureGuard, computeWheelTransform, zoomViewState } from '@/utils/canvasGesture'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 5
-const ZOOM_OUT_FACTOR = 0.9
-const ZOOM_IN_FACTOR = 1.1
 const SAVE_DEBOUNCE_MS = 500
 
 interface Position {
@@ -23,6 +22,8 @@ interface UseZoomPanReturn {
   handleMouseUp: () => void
   resetView: () => void
   fitView: (contentWidth: number, contentHeight: number) => void
+  /** 以视口中心为锚点缩放（工具栏按钮用） */
+  zoomBy: (factor: number) => void
 }
 
 export function useZoomPan(diagramId?: string): UseZoomPanReturn {
@@ -120,24 +121,38 @@ export function useZoomPan(diagramId?: string): UseZoomPanReturn {
     const wrapper = elementRef.current
     if (!wrapper) return
     const rect = wrapper.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
-    const oldScale = scaleRef.current
-    const oldPosition = positionRef.current
-    const factor = e.deltaY > 0 ? ZOOM_OUT_FACTOR : ZOOM_IN_FACTOR
-    const newScale = Math.min(Math.max(oldScale * factor, MIN_SCALE), MAX_SCALE)
-    const ratio = newScale / oldScale
-    setScale(newScale)
-    setPosition({
-      x: mouseX - (mouseX - oldPosition.x) * ratio,
-      y: mouseY - (mouseY - oldPosition.y) * ratio,
-    })
+    const next = computeWheelTransform(
+      e,
+      { x: e.clientX - rect.left, y: e.clientY - rect.top },
+      { scale: scaleRef.current, x: positionRef.current.x, y: positionRef.current.y },
+      { minScale: MIN_SCALE, maxScale: MAX_SCALE }
+    )
+    setScale(next.scale)
+    setPosition({ x: next.x, y: next.y })
+  }, [])
+
+  const zoomBy = useCallback((factor: number) => {
+    const wrapper = elementRef.current
+    if (!wrapper) return
+    const rect = wrapper.getBoundingClientRect()
+    const next = zoomViewState(
+      { scale: scaleRef.current, x: positionRef.current.x, y: positionRef.current.y },
+      { x: rect.width / 2, y: rect.height / 2 },
+      factor,
+      { minScale: MIN_SCALE, maxScale: MAX_SCALE }
+    )
+    setScale(next.scale)
+    setPosition({ x: next.x, y: next.y })
   }, [])
 
   useEffect(() => {
     if (!element) return
     element.addEventListener('wheel', handleWheel, { passive: false })
-    return () => element.removeEventListener('wheel', handleWheel)
+    const unguard = bindGestureGuard(element)
+    return () => {
+      element.removeEventListener('wheel', handleWheel)
+      unguard()
+    }
   }, [element, handleWheel])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -155,5 +170,5 @@ export function useZoomPan(diagramId?: string): UseZoomPanReturn {
 
   const handleMouseUp = useCallback(() => setIsDragging(false), [])
 
-  return { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView }
+  return { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView, zoomBy }
 }

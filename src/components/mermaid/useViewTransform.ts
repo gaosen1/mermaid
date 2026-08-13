@@ -6,6 +6,7 @@ import { useState, useRef, useCallback, useEffect, type RefObject } from 'react'
 import { VIEW_CONFIG } from './constants'
 import { getZoomState, saveZoomState } from '@/utils/zoomStorage'
 import { isSpaceDown, matchMouseDragShortcut } from '@/utils/shortcuts'
+import { bindGestureGuard, computeWheelTransform, zoomViewState } from '@/utils/canvasGesture'
 
 const SAVE_DEBOUNCE_MS = 500
 
@@ -29,6 +30,8 @@ interface UseViewTransformReturn {
   handleMouseUp: () => void
   resetView: () => void
   fitToContainer: () => void
+  /** 以视口中心为锚点缩放（工具栏按钮用） */
+  zoomBy: (factor: number) => void
 }
 
 function calculateFitTransform(
@@ -148,28 +151,39 @@ export function useViewTransform({
     if (!wrapper) return
 
     const rect = wrapper.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
+    const next = computeWheelTransform(
+      e,
+      { x: e.clientX - rect.left, y: e.clientY - rect.top },
+      { scale: scaleRef.current, x: positionRef.current.x, y: positionRef.current.y },
+      { minScale: VIEW_CONFIG.MIN_SCALE, maxScale: VIEW_CONFIG.MAX_SCALE }
+    )
+    setScale(next.scale)
+    setPosition({ x: next.x, y: next.y })
+  }, [wrapperRef])
 
-    const oldScale = scaleRef.current
-    const oldPosition = positionRef.current
-
-    const factor = e.deltaY > 0 ? VIEW_CONFIG.ZOOM_OUT_FACTOR : VIEW_CONFIG.ZOOM_IN_FACTOR
-    const newScale = Math.min(Math.max(oldScale * factor, VIEW_CONFIG.MIN_SCALE), VIEW_CONFIG.MAX_SCALE)
-    const ratio = newScale / oldScale
-
-    setScale(newScale)
-    setPosition({
-      x: mouseX - (mouseX - oldPosition.x) * ratio,
-      y: mouseY - (mouseY - oldPosition.y) * ratio,
-    })
+  const zoomBy = useCallback((factor: number) => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const rect = wrapper.getBoundingClientRect()
+    const next = zoomViewState(
+      { scale: scaleRef.current, x: positionRef.current.x, y: positionRef.current.y },
+      { x: rect.width / 2, y: rect.height / 2 },
+      factor,
+      { minScale: VIEW_CONFIG.MIN_SCALE, maxScale: VIEW_CONFIG.MAX_SCALE }
+    )
+    setScale(next.scale)
+    setPosition({ x: next.x, y: next.y })
   }, [wrapperRef])
 
   useEffect(() => {
     const wrapper = wrapperRef.current
     if (!wrapper) return
     wrapper.addEventListener('wheel', handleWheel, { passive: false })
-    return () => wrapper.removeEventListener('wheel', handleWheel)
+    const unguard = bindGestureGuard(wrapper)
+    return () => {
+      wrapper.removeEventListener('wheel', handleWheel)
+      unguard()
+    }
   }, [handleWheel, wrapperRef])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -198,5 +212,6 @@ export function useViewTransform({
     handleMouseUp,
     resetView,
     fitToContainer,
+    zoomBy,
   }
 }

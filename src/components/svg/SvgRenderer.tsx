@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRe
 import { saveAs } from 'file-saver'
 import { Button } from '@/components/ui/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
 import { useZoomPan } from '@/hooks/useZoomPan'
 
 export interface SvgRendererRef {
@@ -19,7 +19,7 @@ interface SvgRendererProps {
 export const SvgRenderer = forwardRef<SvgRendererRef, SvgRendererProps>(
   ({ source, className = '', fileName = 'diagram', diagramId }, ref) => {
     const innerRef = useRef<HTMLDivElement>(null)
-    const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView } =
+    const { scale, position, isDragging, wrapperRef, handleMouseDown, handleMouseMove, handleMouseUp, resetView, fitView, zoomBy } =
       useZoomPan(diagramId)
 
     const renderState = useMemo((): { svg: string; error: string | null } => {
@@ -84,6 +84,24 @@ export const SvgRenderer = forwardRef<SvgRendererRef, SvgRendererProps>(
             <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
               {Math.round(scale * 100)}%
             </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 bg-background/90 backdrop-blur"
+              onClick={() => zoomBy(1 / 1.2)}
+              title="缩小"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 bg-background/90 backdrop-blur"
+              onClick={() => zoomBy(1.2)}
+              title="放大"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
             <Button
               variant="outline"
               size="icon"

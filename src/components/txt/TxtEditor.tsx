@@ -5,8 +5,9 @@ import { AiNamePopover } from '@/components/mermaid/AiNamePopover'
 import { useFolderStore } from '@/stores/folderStore'
 import { Button } from '@/components/ui/button'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { Download, History, PanelLeft, PanelLeftClose, Save } from 'lucide-react'
+import { Download, History, PanelLeft, PanelLeftClose, Save, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
+import { bindGestureGuard, computeWheelTransform, getWheelMode, zoomViewState } from '@/utils/canvasGesture'
 import { getFolderPath } from '@/utils/folder'
 import { getDiagramFilename } from '@/utils/diagram'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -151,15 +152,15 @@ export function TxtEditor({
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const delta = e.deltaY > 0 ? 0.9 : 1.1
       const rect = preview.getBoundingClientRect()
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
       setCanvasState((prev) => {
-        const newScale = Math.max(0.1, Math.min(5, prev.scale * delta))
-        const offsetX = mouseX - ((mouseX - prev.offsetX) / prev.scale) * newScale
-        const offsetY = mouseY - ((mouseY - prev.offsetY) / prev.scale) * newScale
-        const updated = { scale: newScale, offsetX, offsetY }
+        const next = computeWheelTransform(
+          e,
+          { x: e.clientX - rect.left, y: e.clientY - rect.top },
+          { scale: prev.scale, x: prev.offsetX, y: prev.offsetY },
+          { minScale: 0.1, maxScale: 5 }
+        )
+        const updated = { scale: next.scale, offsetX: next.x, offsetY: next.y }
         saveCanvasState(diagramId, updated)
         return updated
       })
@@ -193,6 +194,7 @@ export function TxtEditor({
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
     preview.addEventListener('contextmenu', handleContextMenu)
+    const unguardGesture = bindGestureGuard(preview)
 
     return () => {
       preview.removeEventListener('wheel', handleWheel)
@@ -200,7 +202,31 @@ export function TxtEditor({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       preview.removeEventListener('contextmenu', handleContextMenu)
+      unguardGesture()
     }
+  }, [diagramId])
+
+  // 工具栏缩放按钮：以视口中心为锚点
+  const zoomCanvasBy = useCallback((factor: number) => {
+    const preview = previewRef.current
+    if (!preview) return
+    setCanvasState((prev) => {
+      const next = zoomViewState(
+        { scale: prev.scale, x: prev.offsetX, y: prev.offsetY },
+        { x: preview.clientWidth / 2, y: preview.clientHeight / 2 },
+        factor,
+        { minScale: 0.1, maxScale: 5 }
+      )
+      const updated = { scale: next.scale, offsetX: next.x, offsetY: next.y }
+      saveCanvasState(diagramId, updated)
+      return updated
+    })
+  }, [diagramId])
+
+  const resetCanvasView = useCallback(() => {
+    const next = { scale: 1, offsetX: 0, offsetY: 0 }
+    setCanvasState(next)
+    saveCanvasState(diagramId, next)
   }, [diagramId])
 
   const togglePanel = useCallback(() => {
@@ -249,8 +275,42 @@ export function TxtEditor({
         </div>
 
         <div className="absolute bottom-2 left-2 text-xs text-muted-foreground pointer-events-none space-y-0.5">
-          <div>🖱️ 滚轮: 缩放</div>
+          <div>{getWheelMode() === 'zoom' ? '🖱️ 滚轮: 缩放' : '🖱️ 滚轮/双指: 平移'}</div>
+          <div>🤏 捏合/Ctrl+滚轮: 缩放</div>
           <div>🖱️ 右键拖拽: 移动</div>
+        </div>
+
+        <div className="absolute bottom-2 right-2 flex items-center gap-1">
+          <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
+            {Math.round(canvasState.scale * 100)}%
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+            onClick={() => zoomCanvasBy(1 / 1.2)}
+            title="缩小"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+            onClick={() => zoomCanvasBy(1.2)}
+            title="放大"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs bg-background/80 backdrop-blur-sm"
+            onClick={resetCanvasView}
+            title="重置视图"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 

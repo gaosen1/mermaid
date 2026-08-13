@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSyncStore } from '@/stores/syncStore'
+import { getWheelMode, setWheelMode, type WheelMode } from '@/utils/canvasGesture'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -23,6 +24,7 @@ import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
   const { settings, updateSettings, resetSettings } = useSettingsStore()
+  const [wheelMode, setWheelModeState] = useState<WheelMode>(getWheelMode)
   const {
     isAuthenticated,
     userName,
@@ -217,6 +219,40 @@ export function SettingsPage() {
                   <SelectItem value="forest">森林</SelectItem>
                   <SelectItem value="neutral">中性</SelectItem>
                   <SelectItem value="base">基础</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>画布交互</CardTitle>
+            <CardDescription>缩放与平移的手势映射</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>滚轮行为</Label>
+                <p className="text-sm text-muted-foreground">
+                  平移：滚轮/双指滑动平移、捏合或 Ctrl+滚轮缩放（触控板友好）；缩放：滚轮直接缩放（旧习惯）；自动：启发式区分设备
+                </p>
+              </div>
+              <Select
+                value={wheelMode}
+                onValueChange={(v) => {
+                  const mode = v as WheelMode
+                  setWheelMode(mode)
+                  setWheelModeState(mode)
+                }}
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pan">平移（推荐）</SelectItem>
+                  <SelectItem value="zoom">缩放</SelectItem>
+                  <SelectItem value="auto">自动</SelectItem>
                 </SelectContent>
               </Select>
             </div>

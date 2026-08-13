@@ -11,8 +11,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save } from 'lucide-react'
+import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
+import { bindGestureGuard, computeWheelTransform, getWheelMode, zoomViewState } from '@/utils/canvasGesture'
 import { renderMarkdown, splitMermaidSegments } from '@/utils/markdown'
 import { MermaidBlock, type MermaidBlockTheme } from './MermaidBlock'
 import { getFolderPath } from '@/utils/folder'
@@ -223,21 +224,17 @@ export function MarkdownTableEditor({
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const delta = e.deltaY > 0 ? 0.9 : 1.1
       const rect = preview.getBoundingClientRect()
-      // 鼠标相对于容器的坐标
-      const mouseX = e.clientX - rect.left
-      const mouseY = e.clientY - rect.top
       const content = preview.querySelector('.md-prose')
       setCanvasState((prev) => {
-        const newScale = Math.max(0.1, Math.min(3, prev.scale * delta))
-        // 保持鼠标指向的内容点不动：
-        // mouseX = offsetX + contentX * scale  =>  contentX = (mouseX - offsetX) / scale
-        // 新 offsetX = mouseX - contentX * newScale
-        const rawX = mouseX - ((mouseX - prev.offsetX) / prev.scale) * newScale
-        const rawY = mouseY - ((mouseY - prev.offsetY) / prev.scale) * newScale
-        const { offsetX, offsetY } = clampOffset(rawX, rawY, newScale, preview.clientWidth, preview.clientHeight, content)
-        const updated = { ...prev, scale: newScale, offsetX, offsetY }
+        const next = computeWheelTransform(
+          e,
+          { x: e.clientX - rect.left, y: e.clientY - rect.top },
+          { scale: prev.scale, x: prev.offsetX, y: prev.offsetY },
+          { minScale: 0.1, maxScale: 3 }
+        )
+        const { offsetX, offsetY } = clampOffset(next.x, next.y, next.scale, preview.clientWidth, preview.clientHeight, content)
+        const updated = { ...prev, scale: next.scale, offsetX, offsetY }
         saveCanvasState(diagramId, updated)
         return updated
       })
@@ -289,6 +286,7 @@ export function MarkdownTableEditor({
     document.addEventListener('mouseup', handleMouseUp)
     preview.addEventListener('contextmenu', handleContextMenu)
     preview.addEventListener('dblclick', handleDblClick)
+    const unguardGesture = bindGestureGuard(preview)
 
     return () => {
       preview.removeEventListener('wheel', handleWheel)
@@ -297,6 +295,7 @@ export function MarkdownTableEditor({
       document.removeEventListener('mouseup', handleMouseUp)
       preview.removeEventListener('contextmenu', handleContextMenu)
       preview.removeEventListener('dblclick', handleDblClick)
+      unguardGesture()
     }
   }, [diagramId])
 
@@ -339,6 +338,25 @@ export function MarkdownTableEditor({
     const next: CanvasState = { scale: 1, offsetX: 0, offsetY: 0 }
     setCanvasState(next)
     saveCanvasState(diagramId, next)
+  }, [diagramId])
+
+  // 工具栏缩放按钮：以视口中心为锚点
+  const zoomCanvasBy = useCallback((factor: number) => {
+    const preview = previewRef.current
+    if (!preview) return
+    setCanvasState((prev) => {
+      const next = zoomViewState(
+        { scale: prev.scale, x: prev.offsetX, y: prev.offsetY },
+        { x: preview.clientWidth / 2, y: preview.clientHeight / 2 },
+        factor,
+        { minScale: 0.1, maxScale: 3 }
+      )
+      const content = preview.querySelector('.md-prose')
+      const { offsetX, offsetY } = clampOffset(next.x, next.y, next.scale, preview.clientWidth, preview.clientHeight, content)
+      const updated = { ...prev, scale: next.scale, offsetX, offsetY }
+      saveCanvasState(diagramId, updated)
+      return updated
+    })
   }, [diagramId])
 
   const handleExportSource = useCallback(async () => {
@@ -468,20 +486,44 @@ export function MarkdownTableEditor({
 
         {/* Canvas controls hint */}
         <div className="absolute bottom-2 left-2 text-xs text-muted-foreground pointer-events-none space-y-0.5">
-          <div>🖱️ 滚轮: 缩放</div>
+          <div>{getWheelMode() === 'zoom' ? '🖱️ 滚轮: 缩放' : '🖱️ 滚轮/双指: 平移'}</div>
+          <div>🤏 捏合/Ctrl+滚轮: 缩放</div>
           <div>🖱️ 右键拖拽: 移动</div>
           <div>🖱️ 双击: 重置视图</div>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={resetCanvas}
-          className="absolute bottom-2 right-2 h-7 text-xs bg-background/80 backdrop-blur-sm shadow-sm"
-          title="重置视图（缩放 100% / 居中）"
-        >
-          重置视图
-        </Button>
+        <div className="absolute bottom-2 right-2 flex items-center gap-1">
+          <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
+            {Math.round(canvasState.scale * 100)}%
+          </span>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+            onClick={() => zoomCanvasBy(1 / 1.2)}
+            title="缩小"
+          >
+            <ZoomOut className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+            onClick={() => zoomCanvasBy(1.2)}
+            title="放大"
+          >
+            <ZoomIn className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetCanvas}
+            className="h-7 text-xs bg-background/80 backdrop-blur-sm shadow-sm"
+            title="重置视图（缩放 100% / 居中）"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {/* Editor panel */}
