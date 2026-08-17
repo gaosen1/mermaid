@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { toast } from 'sonner'
 import { db } from '@/db'
+import { scheduleAgentSync } from '@/utils/agentSync'
 import type { Diagram, DiagramConfig, DiagramType, Snapshot } from '@/types'
 
 interface DiagramState {
@@ -175,6 +176,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     await db.diagrams.add(diagram)
     await db.projects.update(projectId, { updatedAt: now })
     set((state) => ({ diagrams: [...state.diagrams, diagram] }))
+    scheduleAgentSync()
     return diagram
   },
 
@@ -193,6 +195,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     db.diagrams
       .update(id, patched)
       .then(() => (projectId ? db.projects.update(projectId, { updatedAt }) : undefined))
+      .then(() => scheduleAgentSync())
       .catch((err) => {
         toast.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
       })
@@ -211,6 +214,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       diagrams: state.diagrams.filter((d) => d.id !== id),
       currentDiagram: state.currentDiagram?.id === id ? null : state.currentDiagram,
     }))
+    scheduleAgentSync()
   },
 
   setCurrentDiagram: (diagram) => set({ currentDiagram: diagram }),
@@ -267,6 +271,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     db.diagrams.update(diagramId, patched).catch((err) => {
       toast.error('移动失败：' + (err instanceof Error ? err.message : String(err)))
     })
+    scheduleAgentSync()
   },
 
   loadSnapshots: async (diagramId) => {

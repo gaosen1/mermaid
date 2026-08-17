@@ -376,7 +376,28 @@ function getSvgExportDimensions(svgString: string): { width: number; height: num
 export async function exportToPng(
   svgString: string,
   scale: number = 2,
+  preferredDimensions?: { width: number; height: number },
+  options?: { background?: string }
+): Promise<Blob> {
+  return rasterizeSvg(svgString, 'image/png', scale, preferredDimensions, options?.background)
+}
+
+export async function exportToJpg(
+  svgString: string,
+  background: string,
+  scale: number = 2,
   preferredDimensions?: { width: number; height: number }
+): Promise<Blob> {
+  return rasterizeSvg(svgString, 'image/jpeg', scale, preferredDimensions, background)
+}
+
+/** SVG → canvas 光栅化：background 为 undefined 时保持透明底 */
+function rasterizeSvg(
+  svgString: string,
+  mimeType: 'image/png' | 'image/jpeg',
+  scale: number,
+  preferredDimensions?: { width: number; height: number },
+  background?: string
 ): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const { width: parsedWidth, height: parsedHeight, normalizedSvg } = getSvgExportDimensions(svgString)
@@ -399,8 +420,11 @@ export async function exportToPng(
         return
       }
 
-      ctx.fillStyle = 'white'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      // JPG 不支持透明，必须带底；PNG 默认透明
+      if (background) {
+        ctx.fillStyle = background
+        ctx.fillRect(0, 0, canvas.width, canvas.height)
+      }
       ctx.scale(scale, scale)
       ctx.drawImage(img, 0, 0, width, height)
 
@@ -409,9 +433,9 @@ export async function exportToPng(
         if (blob) {
           resolve(blob)
         } else {
-          reject(new Error('Failed to create PNG blob'))
+          reject(new Error('Failed to create image blob'))
         }
-      }, 'image/png')
+      }, mimeType)
     }
 
     img.onerror = () => {

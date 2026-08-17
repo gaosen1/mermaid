@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { v4 as uuid } from 'uuid'
 import { toast } from 'sonner'
 import { db } from '@/db'
+import { scheduleAgentSync } from '@/utils/agentSync'
 import type { DiagramFolder } from '@/types'
 
 interface FolderState {
@@ -57,6 +58,7 @@ export const useFolderStore = create<FolderState>((set) => ({
     }
     await db.folders.add(folder)
     set((state) => ({ folders: [...state.folders, folder] }))
+    scheduleAgentSync()
     return folder
   },
 
@@ -70,6 +72,7 @@ export const useFolderStore = create<FolderState>((set) => ({
     db.folders.update(id, patched).catch((err) => {
       toast.error('保存失败：' + (err instanceof Error ? err.message : String(err)))
     })
+    scheduleAgentSync()
   },
 
   deleteFolder: async (id) => {
@@ -92,6 +95,7 @@ export const useFolderStore = create<FolderState>((set) => ({
         [...state.collapsedFolderIds].filter((fid) => !toDelete.includes(fid))
       ),
     }))
+    scheduleAgentSync()
   },
 
   moveFolderToParent: async (folderId, newParentId) => {
@@ -110,6 +114,7 @@ export const useFolderStore = create<FolderState>((set) => ({
     db.folders.update(folderId, patched).catch((err) => {
       toast.error('移动失败：' + (err instanceof Error ? err.message : String(err)))
     })
+    scheduleAgentSync()
   },
 
   reorderFolders: async (folderIds) => {

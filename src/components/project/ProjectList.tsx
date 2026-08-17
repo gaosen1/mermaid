@@ -46,6 +46,7 @@ import {
   GripVertical,
   ArrowUpDown,
   FileCode2,
+  CalendarRange,
 } from 'lucide-react'
 import {
   exportProjectToZip,
@@ -54,6 +55,7 @@ import {
   importFromJson,
 } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
+import { NoteReviewDialog } from '@/components/diagram/NoteReviewDialog'
 import type { Diagram, Project } from '@/types'
 import {
   DndContext,
@@ -236,6 +238,8 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
   const [newProjectDescription, setNewProjectDescription] = useState('')
   const [newProjectTags, setNewProjectTags] = useState('')
   const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  // 跨项目笔记回顾
+  const [reviewOpen, setReviewOpen] = useState(false)
 
   // 图表搜索结果
   const [diagramResults, setDiagramResults] = useState<DiagramResult[]>([])
@@ -432,6 +436,11 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
             导入
           </Button>
           <input ref={fileInputRef} type="file" accept=".zip,.json" className="hidden" onChange={handleImport} />
+
+          <Button variant="outline" title="笔记回顾" onClick={() => setReviewOpen(true)}>
+            <CalendarRange className="h-4 w-4 mr-1" />
+            回顾
+          </Button>
         </div>
 
         {allTags.length > 0 && (
@@ -597,6 +606,20 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 跨项目笔记回顾 */}
+      <NoteReviewDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+        onOpenDiagram={(projectId, diagramId) => {
+          const project = projects.find((p) => p.id === projectId)
+          if (onSelectDiagramResult) {
+            onSelectDiagramResult(projectId, diagramId)
+          } else if (project) {
+            onSelectProject(project)
+          }
+        }}
+      />
     </div>
   )
 }

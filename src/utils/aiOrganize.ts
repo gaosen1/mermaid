@@ -228,3 +228,66 @@ function cleanFolderPath(raw: string): string | null {
     .join('/')
   return cleaned || null
 }
+
+// ─── 笔记回顾摘要 ────────────────────────────────────────────────────────
+
+export const REVIEW_SUMMARY_LIMIT = 300
+
+export interface ReviewNoteItem {
+  id: string
+  name: string
+  type: DiagramType
+  /** 所属项目名（跨项目回顾时提供上下文） */
+  project?: string
+  /** 区间内新建 */
+  isNew: boolean
+  /** 区间内更新（非新建） */
+  isUpdated: boolean
+  /** 内容摘要（图片类为空） */
+  summary: string
+}
+
+/**
+ * 流式生成区间内笔记的回顾摘要（markdown 要点式）。
+ * 未配置 API Key 时抛出「NEED_API_KEY」错误。
+ */
+export async function streamReviewSummary(options: {
+  rangeLabel: string
+  notes: ReviewNoteItem[]
+  onUpdate: (content: string) => void
+  signal?: AbortSignal
+}): Promise<string> {
+  const apiKey = getAiApiKey()
+  if (!apiKey) throw new Error('NEED_API_KEY')
+
+  const items = options.notes.map((n) => ({
+    name: n.name,
+    project: n.project,
+    type: n.type,
+    status: n.isNew ? '新建' : '更新',
+    summary: n.summary,
+  }))
+
+  const prompt = [
+    '你是个人知识库回顾助手。下面是用户在指定时间段内新建或更新的笔记清单（含内容摘要）。',
+    `时间段：${options.rangeLabel}`,
+    '请生成一份 Markdown 格式的回顾总结，要求：',
+    '1. 结构：先用一句话概括整个周期的主要活动；然后按项目分板块——每个涉及的项目用一个「### 项目名」小标题，板块内用要点列出该项目本周期记录/更新的内容；最后用一句话点出跨项目的变化脉络或值得跟进的事项；',
+    '2. 基于内容摘要归纳，不要编造清单里没有的信息；图片类笔记无摘要，仅提及名称；',
+    '3. 语言简洁自然，中文回复，控制在 400 字以内；',
+    '4. 直接输出总结正文，不要标题以外的客套话。',
+    `\n笔记清单：${JSON.stringify(items)}`,
+  ].join('\n')
+
+  const reply = await requestAiCompletion({
+    apiKey,
+    model: getStoredAiModel(),
+    messages: [{ role: 'user', content: prompt }],
+    thinking: false,
+    signal: options.signal,
+    onUpdate: (update) => options.onUpdate(update.content),
+  })
+
+  if (!reply.content.trim()) throw new Error('模型未返回有效内容')
+  return reply.content.trim()
+}

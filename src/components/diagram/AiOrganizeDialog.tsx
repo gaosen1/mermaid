@@ -215,7 +215,7 @@ export function AiOrganizeDialog({
               )}
               {excluded.size > 0 && <>（已剔除 {excluded.size} 条）</>}
             </div>
-            <ScrollArea className="h-72 border rounded-md" contentClassName="block min-w-0">
+            <ScrollArea className="h-72 border rounded-md min-w-0" contentClassName="block min-w-0">
               <div className="p-2 space-y-3">
                 {groups.map((group) => {
                   const groupExcluded = group.moves.every((m) => excluded.has(m.diagramId))

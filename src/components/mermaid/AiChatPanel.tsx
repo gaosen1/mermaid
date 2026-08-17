@@ -315,24 +315,7 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
 
   return (
     <div className="flex h-full flex-col">
-      <style>{`
-        .ai-md { font-size: 12px; line-height: 1.6; min-width: 0; }
-        .ai-md p { margin: 0.35em 0; }
-        .ai-md h1,.ai-md h2,.ai-md h3,.ai-md h4 { font-weight: 600; margin: 0.6em 0 0.3em; }
-        .ai-md h1 { font-size: 1.2em; }
-        .ai-md h2 { font-size: 1.1em; }
-        .ai-md h3,.ai-md h4 { font-size: 1em; }
-        .ai-md ul,.ai-md ol { padding-left: 1.4em; margin: 0.35em 0; }
-        .ai-md ul { list-style-type: disc; }
-        .ai-md ol { list-style-type: decimal; }
-        .ai-md code { background: var(--muted); border-radius: 3px; padding: 0.1em 0.35em; font-family: monospace; font-size: 0.9em; }
-        .ai-md pre { background: var(--muted); border-radius: 6px; padding: 0.6em; overflow-x: auto; margin: 0.5em 0; }
-        .ai-md pre code { background: none; padding: 0; }
-        .ai-md blockquote { border-left: 2px solid var(--border); padding-left: 0.8em; color: var(--muted-foreground); margin: 0.4em 0; }
-        .ai-md table { border-collapse: collapse; margin: 0.5em 0; }
-        .ai-md th,.ai-md td { border: 1px solid var(--border); padding: 0.25em 0.6em; }
-        .ai-md hr { border: none; border-top: 1px solid var(--border); margin: 0.6em 0; }
-      `}</style>
+      {/* .ai-md 样式已全局定义于 index.css */}
       {/* 头部：会话管理 + API Key 入口 */}
       <div className="flex items-center gap-1 px-2 py-1.5 border-b shrink-0">
         <DropdownMenu open={sessionMenuOpen} onOpenChange={setSessionMenuOpen}>

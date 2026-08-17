@@ -3,6 +3,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { useSyncNotifications } from '@/hooks/useSyncNotifications'
+import { initAgentSync } from '@/utils/agentSync'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Toaster } from '@/components/ui/sonner'
@@ -81,6 +82,7 @@ export function AppLayout() {
     loadSettings()
     loadProjects()
     initSync()
+    initAgentSync()
   }, [initSync, loadProjects, loadSettings])
 
   // 当有冲突且策略为手动时，自动打开冲突对话框

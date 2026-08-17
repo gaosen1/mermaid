@@ -20,12 +20,22 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useFolderStore } from '@/stores/folderStore'
-import { Save, History, Download, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText, Sparkles } from 'lucide-react'
+import { Save, History, Share2, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
+import {
+  toStandardMermaid,
+  copyTextToClipboard,
+  copyImageToClipboard,
+  downloadBlob,
+} from '@/utils/portable'
+import { exportToPng, exportToSvg } from '@/utils/mermaid'
 import { parseEdgeStyleFromSource, type EdgeStyle } from '@/utils/edgeDsl'
 import {
   parseNodeStyleFromSource,
@@ -277,8 +287,63 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     rendererRef.current?.exportPng()
   }, [])
 
+  const handleExportJpg = useCallback(() => {
+    // JPG 底色跟随当前模式：暗色用页面背景色，亮色用白色
+    const background = isDarkMode
+      ? getComputedStyle(document.body).backgroundColor || '#0a0a0a'
+      : '#ffffff'
+    rendererRef.current?.exportJpg(background)
+  }, [isDarkMode])
+
   const handleExportSvg = useCallback(() => {
     rendererRef.current?.exportSvg()
+  }, [])
+
+  // 复制剥离自定义 DSL 后的标准 Mermaid，可直接粘贴到语雀/钉钉文档等
+  const handleCopyStandardMermaid = useCallback(async () => {
+    try {
+      await copyTextToClipboard(toStandardMermaid(source))
+      toast.success('已复制标准 Mermaid 代码（动画效果无法外带）')
+    } catch {
+      toast.error('复制失败，请检查浏览器剪贴板权限')
+    }
+  }, [source])
+
+  const handleCopyPng = useCallback(async () => {
+    try {
+      const exportSource = await rendererRef.current?.getExportSource()
+      if (!exportSource) return
+      const blob = await exportToPng(exportSource.svgString, 2, {
+        width: exportSource.width,
+        height: exportSource.height,
+      })
+      const ok = await copyImageToClipboard(blob, 'image/png')
+      if (ok) {
+        toast.success('已复制 PNG 图片（透明底）')
+      } else {
+        downloadBlob(blob, 'diagram.png')
+        toast.info('当前浏览器不支持复制图片，已改为下载 PNG')
+      }
+    } catch {
+      toast.error('复制图片失败')
+    }
+  }, [])
+
+  const handleCopySvg = useCallback(async () => {
+    try {
+      const exportSource = await rendererRef.current?.getExportSource()
+      if (!exportSource) return
+      const blob = exportToSvg(exportSource.svgString)
+      const ok = await copyImageToClipboard(blob, 'image/svg+xml')
+      if (ok) {
+        toast.success('已复制 SVG')
+      } else {
+        downloadBlob(blob, 'diagram.svg')
+        toast.info('当前浏览器不支持复制 SVG，已改为下载')
+      }
+    } catch {
+      toast.error('复制 SVG 失败')
+    }
   }, [])
 
   // Edge 选中处理
@@ -558,17 +623,32 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 text-xs">
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  导出
+                  <Share2 className="h-3.5 w-3.5 mr-1" />
+                  分享
                   <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuLabel>复制到其他平台</DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleCopyStandardMermaid}>
+                  复制标准 Mermaid 代码
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleCopyPng}>
+                  复制为 PNG 图片
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleCopySvg}>
+                  复制为 SVG
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>下载</DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleExportPng}>
-                  导出为 PNG
+                  下载 PNG（透明底）
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportJpg}>
+                  下载 JPG（带背景）
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExportSvg}>
-                  导出为 SVG
+                  下载 SVG
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

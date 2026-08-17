@@ -9,11 +9,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save, ZoomIn, ZoomOut, RotateCcw, Sparkles } from 'lucide-react'
+import { ChevronDown, Share2, FileCode2, History, PanelLeft, PanelLeftClose, Save, ZoomIn, ZoomOut, RotateCcw, Sparkles } from 'lucide-react'
+import { toast } from 'sonner'
 import { exportDiagram } from '@/utils/export'
+import { toPortableMarkdown, toStandardMermaid, copyTextToClipboard } from '@/utils/portable'
 import { bindGestureGuard, computeWheelTransform, getWheelMode, zoomViewState } from '@/utils/canvasGesture'
 import { renderMarkdown, splitMermaidSegments } from '@/utils/markdown'
 import { MermaidBlock, type MermaidBlockTheme } from './MermaidBlock'
@@ -379,6 +383,26 @@ export function MarkdownTableEditor({
     })
   }, [currentDiagram, source])
 
+  // 复制整篇文档：内嵌 mermaid 块已标准化，可直接粘贴到其他平台
+  const handleCopyPortableDoc = useCallback(async () => {
+    try {
+      await copyTextToClipboard(toPortableMarkdown(source))
+      toast.success('已复制文档（内嵌图表已转为标准 Mermaid）')
+    } catch {
+      toast.error('复制失败，请检查浏览器剪贴板权限')
+    }
+  }, [source])
+
+  // 复制单个内嵌 mermaid 块（标准化后）
+  const handleCopyMermaidBlock = useCallback(async (blockSource: string) => {
+    try {
+      await copyTextToClipboard(toStandardMermaid(blockSource))
+      toast.success('已复制标准 Mermaid 代码（动画效果无法外带）')
+    } catch {
+      toast.error('复制失败，请检查浏览器剪贴板权限')
+    }
+  }, [])
+
   const { html: renderedHtml, mermaidBlocks } = renderMarkdown(source)
 
   // ```mermaid 代码块：跟随设置主题，深色模式下切换 dark 主题，布局支持块内 Frontmatter 覆盖
@@ -602,14 +626,35 @@ export function MarkdownTableEditor({
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 text-xs">
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  导出
+                  <Share2 className="h-3.5 w-3.5 mr-1" />
+                  分享
                   <ChevronDown className="h-3 w-3 ml-1" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuLabel>复制到其他平台</DropdownMenuLabel>
+                <DropdownMenuItem onClick={handleCopyPortableDoc}>
+                  复制文档（内嵌图已标准化）
+                </DropdownMenuItem>
+                {mermaidBlocks.length > 0 && (
+                  <>
+                    {mermaidBlocks.length === 1 ? (
+                      <DropdownMenuItem onClick={() => handleCopyMermaidBlock(mermaidBlocks[0])}>
+                        复制标准 Mermaid 代码
+                      </DropdownMenuItem>
+                    ) : (
+                      mermaidBlocks.map((block, index) => (
+                        <DropdownMenuItem key={index} onClick={() => handleCopyMermaidBlock(block)}>
+                          复制 Mermaid 块 {index + 1}
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel>下载</DropdownMenuLabel>
                 <DropdownMenuItem onClick={handleExportSource}>
-                  导出 .md
+                  下载 .md
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

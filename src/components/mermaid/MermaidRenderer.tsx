@@ -2,9 +2,9 @@ import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardR
 import {
   initMermaid,
   renderMermaid,
-  getSvgFromContainer,
   getPngSourceFromContainer,
   exportToPng,
+  exportToJpg,
   exportToSvg
 } from '@/utils/mermaid'
 import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter } from '@/utils/dsl'
@@ -24,74 +24,24 @@ import type { EdgeStyle } from '@/utils/edgeDsl'
 import { parseAllEdgeStylesFromSource } from '@/utils/edgeDsl'
 import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 
-const DARK_EXPORT_FALLBACK_THEME = 'default'
-const SVG_NS = 'http://www.w3.org/2000/svg'
 type MermaidTheme = NonNullable<MermaidRendererProps['theme']>
 
-interface ExportSvgSource {
+export interface ExportSvgSource {
   svgString: string
   width: number
   height: number
 }
 
-function ensureLightSvgBackground(svg: SVGSVGElement): void {
-  svg.style.backgroundColor = '#ffffff'
-
-  const existingBackground = svg.querySelector(':scope > rect[data-export-background="true"]')
-  if (existingBackground) return
-
-  const rect = document.createElementNS(SVG_NS, 'rect')
-  const viewBox = svg.getAttribute('viewBox')
-  const values = viewBox
-    ?.trim()
-    .split(/[\s,]+/)
-    .map((value) => Number.parseFloat(value))
-
-  if (values?.length === 4 && values.every(Number.isFinite)) {
-    rect.setAttribute('x', String(values[0]))
-    rect.setAttribute('y', String(values[1]))
-    rect.setAttribute('width', String(values[2]))
-    rect.setAttribute('height', String(values[3]))
-  } else {
-    rect.setAttribute('x', '0')
-    rect.setAttribute('y', '0')
-    rect.setAttribute('width', '100%')
-    rect.setAttribute('height', '100%')
-  }
-
-  rect.setAttribute('fill', '#ffffff')
-  rect.setAttribute('data-export-background', 'true')
-  svg.insertBefore(rect, svg.firstChild)
-}
-
-function withLightSvgBackground(svgString: string): string {
-  const container = document.createElement('div')
-  container.innerHTML = svgString
-
-  const svg = container.querySelector('svg') as SVGSVGElement | null
-  if (!svg) return svgString
-
-  ensureLightSvgBackground(svg)
-  return getSvgFromContainer(container) ?? svgString
-}
-
 function getCroppedSvgSource(container: HTMLElement): ExportSvgSource | null {
-  const croppedSource = getPngSourceFromContainer(container)
-  if (!croppedSource) return null
-
-  return {
-    ...croppedSource,
-    svgString: withLightSvgBackground(croppedSource.svgString),
-  }
-}
-
-function getExportTheme(theme: MermaidTheme): MermaidTheme {
-  return theme === 'dark' ? DARK_EXPORT_FALLBACK_THEME : theme
+  return getPngSourceFromContainer(container)
 }
 
 export interface MermaidRendererRef {
   exportPng: () => Promise<void>
+  exportJpg: (background: string) => Promise<void>
   exportSvg: () => void
+  /** 渲染一份与当前主题所见即所得的导出 SVG（供分享菜单复制/下载） */
+  getExportSource: () => Promise<ExportSvgSource | null>
   resetView: () => void
   restoreEdgeSelection: () => void
   clearEdgeSelection: () => void
@@ -339,14 +289,15 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
     }, [isRendering, fitToContainer])
 
 
-    const renderLightExportSource = useCallback(async (): Promise<ExportSvgSource | null> => {
+    // 导出源渲染：与当前画布主题所见即所得（不再强制降级亮色/白底）
+    const renderExportSource = useCallback(async (): Promise<ExportSvgSource | null> => {
       if (!source.trim()) return null
 
       const { config: frontmatterConfig, content } = parseFrontmatter(source)
       const effectiveLayout = frontmatterConfig?.layout || layout
       const effectiveTheme = theme as MermaidTheme
 
-      await initMermaid(effectiveLayout, getExportTheme(effectiveTheme))
+      await initMermaid(effectiveLayout, effectiveTheme)
 
       const { source: processedSource, animations } = parseExtendedDSL(content)
       const animationCSS = generateAnimationCSS(animations)
@@ -386,9 +337,10 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
 
     const handleExportPng = useCallback(async () => {
       try {
-        const exportSource = await renderLightExportSource()
+        const exportSource = await renderExportSource()
         if (!exportSource) return
 
+        // PNG 默认透明底；需要带底请使用 JPG 导出
         const blob = await exportToPng(
           exportSource.svgString,
           2,
@@ -398,11 +350,28 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       } catch (err) {
         console.error('Export PNG failed:', err)
       }
-    }, [renderLightExportSource])
+    }, [renderExportSource])
+
+    const handleExportJpg = useCallback(async (background: string) => {
+      try {
+        const exportSource = await renderExportSource()
+        if (!exportSource) return
+
+        const blob = await exportToJpg(
+          exportSource.svgString,
+          background,
+          2,
+          { width: exportSource.width, height: exportSource.height }
+        )
+        saveAs(blob, 'diagram.jpg')
+      } catch (err) {
+        console.error('Export JPG failed:', err)
+      }
+    }, [renderExportSource])
 
     const handleExportSvg = useCallback(async () => {
       try {
-        const exportSource = await renderLightExportSource()
+        const exportSource = await renderExportSource()
         if (!exportSource) return
 
         const blob = exportToSvg(exportSource.svgString)
@@ -410,7 +379,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       } catch (err) {
         console.error('Export SVG failed:', err)
       }
-    }, [renderLightExportSource])
+    }, [renderExportSource])
 
     const handleContextMenu = useCallback((e: React.MouseEvent) => e.preventDefault(), [])
 
@@ -419,7 +388,9 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       ref,
       () => ({
         exportPng: handleExportPng,
+        exportJpg: handleExportJpg,
         exportSvg: handleExportSvg,
+        getExportSource: renderExportSource,
         resetView,
         restoreEdgeSelection,
         clearEdgeSelection,
@@ -446,7 +417,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
         },
         getScale: () => scale,
       }),
-      [handleExportPng, handleExportSvg, resetView, restoreEdgeSelection, clearEdgeSelection, restoreNodeSelection, clearNodeSelection, scale]
+      [handleExportPng, handleExportJpg, handleExportSvg, renderExportSource, resetView, restoreEdgeSelection, clearEdgeSelection, restoreNodeSelection, clearNodeSelection, scale]
     )
 
     return (

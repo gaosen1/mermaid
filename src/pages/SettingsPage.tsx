@@ -1,7 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { getWheelMode, setWheelMode, type WheelMode } from '@/utils/canvasGesture'
+import {
+  getAgentSyncStatus,
+  subscribeAgentSync,
+  pickAgentSyncDir,
+  disconnectAgentSync,
+  grantAgentSyncPermission,
+  readAgentAuthToken,
+  syncNow as agentSyncNow,
+  AGENT_API_DEFAULT_PORT,
+  type AgentAuthToken,
+} from '@/utils/agentSync'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -19,7 +31,7 @@ import {
   SyncSettingsPanel,
   SyncQueuePanel,
 } from '@/components/sync'
-import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
+import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug } from 'lucide-react'
 import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
@@ -318,6 +330,21 @@ export function SettingsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              本地 Agent 同步
+            </CardTitle>
+            <CardDescription>
+              将笔记库快照（含 mermaid 标准化源码 / SVG / PNG）写入本地目录，供本地 Coding Agent 通过 REST API 读取
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AgentSyncCard />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>可视化编辑器</CardTitle>
             <CardDescription>拖拽式图表编辑功能</CardDescription>
           </CardHeader>
@@ -334,6 +361,140 @@ export function SettingsPage() {
       </div>
 
       <GitHubLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
+    </div>
+  )
+}
+
+// ─── 本地 Agent 同步卡片 ───────────────────────────────────────────────
+
+function AgentSyncCard() {
+  const [status, setStatus] = useState(getAgentSyncStatus)
+  const [token, setToken] = useState<AgentAuthToken | null>(null)
+  const [nowTs, setNowTs] = useState(0)
+
+  useEffect(() => {
+    const refreshAll = () => {
+      setStatus(getAgentSyncStatus())
+      readAgentAuthToken().then(setToken)
+      setNowTs(Date.now())
+    }
+    refreshAll()
+    return subscribeAgentSync(refreshAll)
+  }, [])
+
+  const expired = token ? nowTs > token.expiresAt : false
+
+  if (!status.supported) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        当前浏览器不支持 File System Access API（需 Chromium 内核浏览器，如 Chrome / Edge）。
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {status.connected ? (
+        <div className="flex items-center justify-between p-3 bg-green-500/10 rounded-lg">
+          <div className="flex items-center gap-3 min-w-0">
+            <FolderOpen className="h-5 w-5 text-green-500 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-medium truncate">{status.dirName}</p>
+              <p className="text-sm text-muted-foreground">
+                {status.syncing
+                  ? '同步中…'
+                  : status.lastSyncAt
+                    ? `上次同步：${new Date(status.lastSyncAt).toLocaleString()}`
+                    : '尚未同步'}
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <Button variant="outline" size="sm" onClick={() => agentSyncNow()} disabled={status.syncing}>
+              <RefreshCw className={`h-4 w-4 mr-2 ${status.syncing ? 'animate-spin' : ''}`} />
+              立即同步
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => disconnectAgentSync()}>
+              <Unplug className="h-4 w-4 mr-2" />
+              断开
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-center py-4">
+          <p className="text-muted-foreground mb-4">
+            选择一个本地目录后，笔记的每次变更都会自动同步为该目录下的文件快照
+          </p>
+          <Button onClick={() => pickAgentSyncDir()}>
+            <FolderOpen className="h-4 w-4 mr-2" />
+            选择同步目录
+          </Button>
+        </div>
+      )}
+
+      {status.needsPermission && (
+        <div className="flex items-center justify-between p-3 bg-amber-500/10 rounded-lg">
+          <p className="text-sm">浏览器需要重新授权目录访问权限</p>
+          <Button variant="outline" size="sm" onClick={() => grantAgentSyncPermission()}>
+            允许访问
+          </Button>
+        </div>
+      )}
+
+      {status.lastError && (
+        <div className="flex items-start gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+          <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+          <span>{status.lastError}</span>
+        </div>
+      )}
+
+      {status.connected && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <Label>REST API 鉴权 Token</Label>
+            {token ? (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <code className="text-xs bg-muted rounded px-2 py-1 truncate flex-1">
+                    {token.token.slice(0, 8)}…{token.token.slice(-4)}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(token.token)
+                        toast.success('已复制 Token')
+                      } catch {
+                        toast.error('复制失败，请手动复制')
+                      }
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5 mr-1" />
+                    复制
+                  </Button>
+                </div>
+                <p className={`text-xs ${expired ? 'text-destructive' : 'text-muted-foreground'}`}>
+                  {expired
+                    ? 'Token 已过期：调用 GET /api/auth/token（仅限本机）可重新签发'
+                    : `有效期至 ${new Date(token.expiresAt).toLocaleDateString()}`}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                启动 API 服务后自动生成（1 个月过期）
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              在本仓库根目录运行 <code className="bg-muted rounded px-1">node scripts/agent-api.mjs</code>
+              （默认端口 {AGENT_API_DEFAULT_PORT}，可用 --port / --dir 覆盖），Agent 即可通过
+              <code className="bg-muted rounded px-1"> GET /api/auth/token </code>
+              获取 Token 后调用 <code className="bg-muted rounded px-1">/api/diagrams</code> 等接口。
+            </p>
+          </div>
+        </>
+      )}
     </div>
   )
 }

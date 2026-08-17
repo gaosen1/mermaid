@@ -15,6 +15,8 @@ const db = new Dexie('MermaidLocalDB') as Dexie & {
   syncQueue: EntityTable<SyncQueueItem, 'id'>
   // AI 会话表：一个 diagram 可对应多个会话
   aiChats: EntityTable<AiChatSession, 'id'>
+  // 通用键值表：存放 FileSystemDirectoryHandle 等本地句柄
+  kv: EntityTable<{ key: string; value: unknown }, 'key'>
 }
 
 // 版本 1：原有结构
@@ -218,6 +220,20 @@ db.version(10).stores({
   syncLog: '++id, timestamp, status, entityType, entityId',
   syncQueue: '++id, entityType, entityId, priority, createdAt',
   aiChats: 'id, diagramId, updatedAt',
+})
+
+// 版本 11：kv 表（本地 Agent 同步目录句柄等）
+db.version(11).stores({
+  projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+  diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime',
+  folders: 'id, projectId, parentId, name, order, updatedAt, syncStatus, lastSyncTime',
+  folderCollapse: 'folderId, projectId',
+  snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+  settings: 'id',
+  syncLog: '++id, timestamp, status, entityType, entityId',
+  syncQueue: '++id, entityType, entityId, priority, createdAt',
+  aiChats: 'id, diagramId, updatedAt',
+  kv: 'key',
 })
 
 export { db }
