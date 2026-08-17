@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { v4 as uuid } from 'uuid'
 import {
   Check,
@@ -32,6 +32,7 @@ import { renderMarkdownToHtml } from '@/utils/markdown'
 import { ApiKeyDialog } from './ApiKeyDialog'
 import {
   AI_MODELS,
+  buildMarkdownSystemPrompt,
   buildSystemPrompt,
   getAiApiKey,
   getStoredAiModel,
@@ -41,7 +42,16 @@ import {
 } from '@/utils/aiChat'
 
 // 输入框留空时自动发送的默认提问
-const DEFAULT_QUESTION = '请按平台语法规范优化并修正当前 Mermaid 代码，返回完整代码。'
+const DEFAULT_QUESTIONS: Record<'mermaid' | 'markdown', string> = {
+  mermaid: '请按平台语法规范优化并修正当前 Mermaid 代码，返回完整代码。',
+  markdown: '请优化并修正当前 Markdown 文档，返回完整内容。',
+}
+
+// 各模式下允许「应用到编辑器」的代码块语言
+const APPLY_LANGS: Record<'mermaid' | 'markdown', string[]> = {
+  mermaid: ['mermaid'],
+  markdown: ['markdown', 'md'],
+}
 
 type ChatItem = AiChatSessionMessage
 
@@ -49,22 +59,65 @@ type ReplySegment =
   | { type: 'text'; text: string }
   | { type: 'code'; lang: string; code: string }
 
-// 将模型回复拆成文本段与代码块段，代码块渲染为独立卡片方便复制/应用
+// 将模型回复拆成文本段与代码块段，代码块渲染为独立卡片方便复制/应用。
+// 按行扫描并跟踪围栏嵌套：```markdown 块内嵌的 ```mermaid 等子围栏
+// 属于外层代码块内容，不能提前截断（CommonMark 规则：带信息串的围栏开嵌套，
+// 不带信息串且长度足够的围栏关闭最内层）。
 function parseReplySegments(content: string): ReplySegment[] {
   const segments: ReplySegment[] = []
-  const fenceRegex = /```([\w-]*)[^\n]*\n([\s\S]*?)```/g
-  let lastIndex = 0
+  const lines = content.split('\n')
+  const fenceRe = /^(\s*)(`{3,})(.*)$/
+  // 栈中存每层围栏的反引号长度
+  const stack: number[] = []
+  let lang = ''
+  let codeLines: string[] = []
+  let textLines: string[] = []
 
-  for (const match of content.matchAll(fenceRegex)) {
-    const start = match.index ?? 0
-    const text = content.slice(lastIndex, start).trim()
+  const flushText = () => {
+    const text = textLines.join('\n').trim()
     if (text) segments.push({ type: 'text', text })
-    segments.push({ type: 'code', lang: match[1] || 'code', code: match[2].trim() })
-    lastIndex = start + match[0].length
+    textLines = []
+  }
+  const flushCode = () => {
+    segments.push({ type: 'code', lang, code: codeLines.join('\n').trim() })
+    codeLines = []
   }
 
-  const rest = content.slice(lastIndex).trim()
-  if (rest) segments.push({ type: 'text', text: rest })
+  for (const line of lines) {
+    const m = line.match(fenceRe)
+    if (m) {
+      const len = m[2].length
+      const info = m[3].trim()
+      const hasInfo = /^[\w-]+$/.test(info)
+      if (stack.length === 0) {
+        // 外层代码块开始
+        flushText()
+        stack.push(len)
+        lang = info || 'code'
+      } else if (hasInfo) {
+        // 嵌套围栏开始（如 markdown 块内的 mermaid 块）
+        stack.push(len)
+        codeLines.push(line)
+      } else if (len >= stack[stack.length - 1]) {
+        // 裸围栏：关闭最内层
+        stack.pop()
+        if (stack.length === 0) {
+          flushCode()
+        } else {
+          codeLines.push(line)
+        }
+      } else {
+        codeLines.push(line)
+      }
+    } else if (stack.length > 0) {
+      codeLines.push(line)
+    } else {
+      textLines.push(line)
+    }
+  }
+  // 未闭合的围栏兜底：当作代码块输出
+  if (stack.length > 0) flushCode()
+  flushText()
   return segments
 }
 
@@ -72,9 +125,11 @@ interface AiChatPanelProps {
   diagramId: string
   source: string
   onApplySource: (source: string) => void
+  /** mermaid：优化 mermaid 代码；markdown：优化 Markdown 文档 */
+  mode?: 'mermaid' | 'markdown'
 }
 
-export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelProps) {
+export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid' }: AiChatPanelProps) {
   const [sessions, setSessions] = useState<AiChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [items, setItems] = useState<ChatItem[]>([])
@@ -86,7 +141,11 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
   const [thinking, setThinking] = useState(() => localStorage.getItem('ai-chat-thinking') !== '0')
   const [withSkill, setWithSkill] = useState(() => localStorage.getItem('ai-chat-with-skill') !== '0')
+  // 正在流式输出的 assistant 消息 id（用于实时渲染与推理块自动展开）
+  const [streamingId, setStreamingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // 用户是否贴近底部：流式输出时若用户没有主动上滚，则持续自动滚到底部
+  const stickToBottomRef = useRef(true)
   const activeSessionIdRef = useRef<string | null>(null)
 
   useEffect(() => {
@@ -113,9 +172,20 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
     }
   }, [diagramId])
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
-  }, [items, loading])
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    // 流式输出期间跟随贴底；用户主动上滚时暂停，滚回底部后自动恢复
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [items, loading, streamingId])
+
+  const handleListScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    stickToBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  }
 
   const sortedSessions = [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null
@@ -125,6 +195,8 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
     setActiveSessionId(id)
     setItems(session ? session.messages : [])
     setSessionMenuOpen(false)
+    // 切换会话后定位到最新消息
+    stickToBottomRef.current = true
   }
 
   const deleteSession = async (id: string) => {
@@ -152,7 +224,7 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
       return
     }
 
-    const question = input.trim() || DEFAULT_QUESTION
+    const question = input.trim() || DEFAULT_QUESTIONS[mode]
     const userItem: ChatItem = { id: uuid(), role: 'user', content: question }
     const pendingItems = [...items, userItem]
     setItems(pendingItems)
@@ -181,25 +253,51 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
       .map((item) => ({ role: item.role, content: item.content }) as AiMessage)
 
     const messages: AiMessage[] = [
-      { role: 'system', content: buildSystemPrompt(source, { withSkill }) },
+      {
+        role: 'system',
+        content:
+          mode === 'markdown'
+            ? buildMarkdownSystemPrompt(source, { withSkill })
+            : buildSystemPrompt(source, { withSkill }),
+      },
       ...history,
       { role: 'user', content: question },
     ]
 
     let finalItems: ChatItem[]
+    const streamItemId = uuid()
+    // 先插入空气泡，流式增量填充；发送后强制贴底跟随
+    stickToBottomRef.current = true
+    setItems([...pendingItems, { id: streamItemId, role: 'assistant', content: '' }])
+    setStreamingId(streamItemId)
     try {
-      const reply = await requestAiCompletion({ apiKey, model, messages, thinking })
+      const reply = await requestAiCompletion({
+        apiKey,
+        model,
+        messages,
+        thinking,
+        onUpdate: (update) => {
+          setItems((prev) =>
+            prev.map((it) =>
+              it.id === streamItemId
+                ? { ...it, content: update.content, reasoning: update.reasoning || undefined }
+                : it
+            )
+          )
+        },
+      })
       finalItems = [
         ...pendingItems,
-        { id: uuid(), role: 'assistant', content: reply.content, reasoning: reply.reasoning },
+        { id: streamItemId, role: 'assistant', content: reply.content, reasoning: reply.reasoning },
       ]
     } catch (err) {
       const message = err instanceof Error ? err.message : '请求失败'
       finalItems = [
         ...pendingItems,
-        { id: uuid(), role: 'assistant', content: message, error: true },
+        { id: streamItemId, role: 'assistant', content: message, error: true },
       ]
     }
+    setStreamingId(null)
 
     // 持久化到目标会话（用户可能已切换到别的会话）
     const updatedSession: AiChatSession = {
@@ -309,7 +407,7 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
       </div>
 
       {/* 消息列表 */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
+      <div ref={scrollRef} onScroll={handleListScroll} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
         {items.length === 0 && !loading && (
           <div className="text-xs text-muted-foreground leading-5 pt-2">
             {sortedSessions.length > 0
@@ -335,6 +433,8 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
                     content={item.content}
                     reasoning={item.reasoning}
                     onApplySource={onApplySource}
+                    applyLangs={APPLY_LANGS[mode]}
+                    streaming={item.id === streamingId}
                   />
                 )}
               </div>
@@ -342,7 +442,7 @@ export function AiChatPanel({ diagramId, source, onApplySource }: AiChatPanelPro
           )
         })}
 
-        {loading && (
+        {loading && !streamingId && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             AI 处理中…
@@ -425,15 +525,27 @@ function AssistantReply({
   content,
   reasoning,
   onApplySource,
+  applyLangs,
+  streaming,
 }: {
   content: string
   reasoning?: string
   onApplySource: (source: string) => void
+  applyLangs: string[]
+  streaming?: boolean
 }) {
   const segments = parseReplySegments(content)
+  if (streaming && !content && !reasoning) {
+    return (
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        思考中…
+      </div>
+    )
+  }
   return (
     <div className="space-y-1.5 whitespace-normal min-w-0">
-      {reasoning && <ReasoningBlock reasoning={reasoning} />}
+      {reasoning && <ReasoningBlock reasoning={reasoning} streaming={streaming} />}
       {segments.map((segment, index) =>
         segment.type === 'text' ? (
           <TextMarkdown key={index} text={segment.text} />
@@ -443,6 +555,7 @@ function AssistantReply({
             lang={segment.lang}
             code={segment.code}
             onApplySource={onApplySource}
+            applyLangs={applyLangs}
           />
         )
       )}
@@ -450,9 +563,19 @@ function AssistantReply({
   )
 }
 
-// 模型推理内容：默认折叠，点击展开
-function ReasoningBlock({ reasoning }: { reasoning: string }) {
-  const [open, setOpen] = useState(false)
+// 模型推理内容：流式输出时自动展开并跟随滚动，结束后可手动折叠
+function ReasoningBlock({ reasoning, streaming }: { reasoning: string; streaming?: boolean }) {
+  const [open, setOpen] = useState(Boolean(streaming))
+  const contentRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (streaming) setOpen(true)
+  }, [streaming])
+  // 推理块有自己的 max-h 滚动区，流式增长时独立滚到底部
+  useLayoutEffect(() => {
+    if (streaming && open && contentRef.current) {
+      contentRef.current.scrollTop = contentRef.current.scrollHeight
+    }
+  }, [reasoning, streaming, open])
   return (
     <div className="rounded-md border border-dashed bg-muted/20">
       <button
@@ -463,7 +586,7 @@ function ReasoningBlock({ reasoning }: { reasoning: string }) {
         推理过程
       </button>
       {open && (
-        <div className="px-2 pb-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap wrap-break-word max-h-64 overflow-y-auto">
+        <div ref={contentRef} className="px-2 pb-2 text-[11px] leading-5 text-muted-foreground whitespace-pre-wrap wrap-break-word max-h-64 overflow-y-auto">
           {reasoning}
         </div>
       )}
@@ -481,13 +604,15 @@ function CodeCard({
   lang,
   code,
   onApplySource,
+  applyLangs,
 }: {
   lang: string
   code: string
   onApplySource: (source: string) => void
+  applyLangs: string[]
 }) {
   const [copied, setCopied] = useState(false)
-  const isMermaid = lang === '' || lang.toLowerCase() === 'mermaid'
+  const applyable = applyLangs.includes(lang.toLowerCase())
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code)
@@ -504,7 +629,7 @@ function CodeCard({
             {copied ? <Check className="h-3 w-3 mr-1" /> : <Copy className="h-3 w-3 mr-1" />}
             {copied ? '已复制' : '复制'}
           </Button>
-          {isMermaid && (
+          {applyable && (
             <Button
               variant="outline"
               size="sm"

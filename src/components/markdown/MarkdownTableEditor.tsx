@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CodeEditor } from '@/components/mermaid/CodeEditor'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { AiNamePopover } from '@/components/mermaid/AiNamePopover'
+import { AiChatPanel } from '@/components/mermaid/AiChatPanel'
 import { useFolderStore } from '@/stores/folderStore'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react'
+import { ChevronDown, Download, FileCode2, History, PanelLeft, PanelLeftClose, Save, ZoomIn, ZoomOut, RotateCcw, Sparkles } from 'lucide-react'
 import { exportDiagram } from '@/utils/export'
 import { bindGestureGuard, computeWheelTransform, getWheelMode, zoomViewState } from '@/utils/canvasGesture'
 import { renderMarkdown, splitMermaidSegments } from '@/utils/markdown'
@@ -128,7 +129,7 @@ export function MarkdownTableEditor({
   const [source, setSource] = useState('')
   const [hasChanges, setHasChanges] = useState(false)
   const [panelState, setPanelState] = useState<EditorPanelState>(loadEditorState)
-  const [activeTab, setActiveTab] = useState<'preview' | 'history'>('preview')
+  const [activeTab, setActiveTab] = useState<'preview' | 'history' | 'ai'>('preview')
   const [isPanelHovered, setIsPanelHovered] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
@@ -333,6 +334,16 @@ export function MarkdownTableEditor({
     setSource(newSource)
     setHasChanges(true)
   }, [])
+
+  // 应用 AI 返回的 Markdown 前先留一个回滚快照，并立即刷新历史列表
+  const handleApplyAiSource = useCallback(
+    async (newSource: string) => {
+      if (!currentDiagram || newSource === source) return
+      await createSnapshot(currentDiagram.id, source, 'AI 应用前')
+      handleSourceChange(newSource)
+    },
+    [createSnapshot, currentDiagram, source, handleSourceChange]
+  )
 
   const resetCanvas = useCallback(() => {
     const next: CanvasState = { scale: 1, offsetX: 0, offsetY: 0 }
@@ -627,6 +638,17 @@ export function MarkdownTableEditor({
             <History className="h-3.5 w-3.5 inline mr-1" />
             历史
           </button>
+          <button
+            className={`flex-1 px-3 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'ai'
+                ? 'text-foreground border-b-2 border-primary'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab('ai')}
+          >
+            <Sparkles className="h-3.5 w-3.5 inline mr-1" />
+            AI
+          </button>
         </div>
 
         <div
@@ -639,7 +661,7 @@ export function MarkdownTableEditor({
             ${isPanelHovered ? '[&::-webkit-scrollbar-thumb]:bg-border hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/50' : ''}
           `}
         >
-          {activeTab === 'preview' ? (
+          {activeTab === 'preview' && (
             <CodeEditor
               value={source}
               onChange={handleSourceChange}
@@ -648,7 +670,8 @@ export function MarkdownTableEditor({
               language="markdown"
               placeholder="输入 Markdown 内容（支持标题、表格、代码块、列表等）"
             />
-          ) : (
+          )}
+          {activeTab === 'history' && (
             <ScrollArea className="h-full">
               <div className="p-3 space-y-2">
                 {snapshots.length === 0 ? (
@@ -690,6 +713,15 @@ export function MarkdownTableEditor({
               </div>
             </ScrollArea>
           )}
+          {/* AI 面板常驻挂载，切换标签不丢会话 */}
+          <div className={`h-full ${activeTab === 'ai' ? '' : 'hidden'}`}>
+            <AiChatPanel
+              diagramId={diagramId}
+              source={source}
+              onApplySource={handleApplyAiSource}
+              mode="markdown"
+            />
+          </div>
         </div>
       </div>
 
