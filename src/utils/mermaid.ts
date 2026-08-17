@@ -100,7 +100,19 @@ export async function renderMermaid(
       }
     }
     throw err
+  } finally {
+    // mermaid 渲染失败时会把错误占位节点（id 为 "d" + containerId，
+    // 重试还有 -ls* 后缀）留在 body 下，表现为页面底部堆积
+    // "Syntax error in text"；成功时 mermaid 已自行移除，此处清理为幂等。
+    removeRenderTempNodes(containerId)
   }
+}
+
+/** 清理 mermaid.render 遗留在 body 下的临时/错误占位节点 */
+function removeRenderTempNodes(containerId: string): void {
+  document.querySelectorAll(`div[id^="d${containerId}"]`).forEach((div) => {
+    if (div.parentElement === document.body) div.remove()
+  })
 }
 
 function isLinkStyleOverflowError(err: unknown, source: string): boolean {
