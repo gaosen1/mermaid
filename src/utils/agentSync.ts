@@ -1,4 +1,5 @@
 import { db } from '@/db'
+import { v4 as uuid } from 'uuid'
 import { initMermaid, renderMermaid, exportToPng } from './mermaid'
 import { parseFrontmatter, parseExtendedDSL, generateAnimationCSS } from './dsl'
 import { parseAllEdgeStylesFromSource } from './edgeDsl'
@@ -6,7 +7,10 @@ import { applyEdgeStyle } from '@/components/mermaid/svgStyleApplier'
 import { toStandardMermaid, toPortableMarkdown } from './portable'
 import { getDiagramFileExtension } from './diagram'
 import { cropSvgToContentBBox } from './svgCrop'
-import type { DiagramFolder } from '@/types'
+import type { Diagram, DiagramFolder, Project } from '@/types'
+
+/** REST API 写回（inbox）摄取完成后派发，供 UI 刷新列表 */
+export const AGENT_SYNC_INGESTED_EVENT = 'agent-sync-ingested'
 
 /**
  * 本地 Agent 同步：把笔记库快照（含 mermaid 的标准化源码 / SVG / PNG 产物）
@@ -107,6 +111,90 @@ export async function pickAgentSyncDir(): Promise<void> {
 export async function disconnectAgentSync(): Promise<void> {
   await db.kv.delete(KV_KEY)
   setStatus({ connected: false, dirName: null, needsPermission: false })
+}
+
+// ─── REST API 写回（inbox）摄取 ───────────────────────────────
+
+interface InboxPayload {
+  name?: string
+  type?: string
+  source?: string
+  projectName?: string
+}
+
+const INBOX_TYPES = ['mermaid', 'markdown', 'txt']
+
+/**
+ * 扫描同步目录下的 inbox/：REST API POST /api/diagrams 写入的待导入笔记。
+ * 成功导入后删除 inbox 文件；失败保留并在控制台告警。
+ */
+async function ingestInbox(handle: FileSystemDirectoryHandle): Promise<void> {
+  let inboxDir: FileSystemDirectoryHandle
+  try {
+    inboxDir = await handle.getDirectoryHandle('inbox')
+  } catch {
+    return
+  }
+  const entries: Array<[string, FileSystemHandle]> = []
+  for await (const [name, h] of (
+    inboxDir as unknown as { entries: () => AsyncIterableIterator<[string, FileSystemHandle]> }
+  ).entries()) {
+    entries.push([name, h])
+  }
+
+  let ingested = 0
+  for (const [name, h] of entries) {
+    if (h.kind !== 'file' || !name.endsWith('.json')) continue
+    try {
+      const file = await (h as FileSystemFileHandle).getFile()
+      const payload = JSON.parse(await file.text()) as InboxPayload
+      if (
+        !payload.name ||
+        typeof payload.source !== 'string' ||
+        !INBOX_TYPES.includes(payload.type ?? '')
+      ) {
+        throw new Error('payload 字段不合法')
+      }
+      const projectName = payload.projectName?.trim() || 'Agent 导入'
+      let project = await db.projects.where('name').equals(projectName).first()
+      if (!project) {
+        const now = Date.now()
+        project = {
+          id: uuid(),
+          name: projectName,
+          description: '',
+          tags: [],
+          createdAt: now,
+          updatedAt: now,
+          order: 0,
+          syncStatus: 'local-only',
+        } as Project
+        await db.projects.add(project)
+      }
+      const now = Date.now()
+      await db.diagrams.add({
+        id: uuid(),
+        projectId: project.id,
+        folderId: null,
+        name: payload.name,
+        type: payload.type as Diagram['type'],
+        source: payload.source,
+        order: now,
+        createdAt: now,
+        updatedAt: now,
+        syncStatus: 'local-only',
+      } as Diagram)
+      await (
+        inboxDir as unknown as { removeEntry: (n: string) => Promise<void> }
+      ).removeEntry(name)
+      ingested++
+    } catch (err) {
+      console.warn(`[agent-sync] inbox 导入失败 ${name}:`, err instanceof Error ? err.message : err)
+    }
+  }
+  if (ingested > 0) {
+    window.dispatchEvent(new CustomEvent(AGENT_SYNC_INGESTED_EVENT))
+  }
 }
 
 /** 应用启动时调用：恢复句柄；权限仍在则立即同步 */
@@ -291,6 +379,7 @@ export async function syncNow(): Promise<void> {
 
   setStatus({ syncing: true, lastError: null })
   try {
+    await ingestInbox(handle)
     const [projects, diagrams, folders] = await Promise.all([
       db.projects.toArray(),
       db.diagrams.toArray(),

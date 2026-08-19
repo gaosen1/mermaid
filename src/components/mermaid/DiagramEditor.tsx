@@ -6,6 +6,8 @@ import { NodeStylePanel } from './NodeStylePanel'
 import { MermaidDslHelpDialog } from './MermaidDslHelpDialog'
 import { AiChatPanel } from './AiChatPanel'
 import { AiNamePopover } from './AiNamePopover'
+import { PresentationMode } from './PresentationMode'
+import { PALETTE_ACTION_EVENT } from '@/utils/paletteAction'
 import { useSourceSync } from './useSourceSync'
 import { useInlineTextEdit } from './useInlineTextEdit'
 import { Button } from '@/components/ui/button'
@@ -27,7 +29,7 @@ import {
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useFolderStore } from '@/stores/folderStore'
-import { Save, History, Share2, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText, Sparkles } from 'lucide-react'
+import { Save, History, Share2, PanelLeftClose, PanelLeft, ChevronDown, BookOpenText, Sparkles, MonitorPlay } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   toStandardMermaid,
@@ -115,6 +117,16 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [isAnimating, setIsAnimating] = useState(false)
   const [isDarkMode, setIsDarkMode] = useState(false)
   const [dslHelpOpen, setDslHelpOpen] = useState(false)
+  const [presentationOpen, setPresentationOpen] = useState(false)
+
+  // 命令面板「演示模式」动作
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === 'presentation') setPresentationOpen(true)
+    }
+    window.addEventListener(PALETTE_ACTION_EVENT, handler)
+    return () => window.removeEventListener(PALETTE_ACTION_EVENT, handler)
+  }, [])
   const autoSaveTimerRef = useRef<number | null>(null)
   const rendererRef = useRef<MermaidRendererRef>(null)
 
@@ -731,6 +743,17 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
               保存
             </Button>
 
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              title="演示模式（←/→ 翻页，Esc 退出）"
+              onClick={() => setPresentationOpen(true)}
+            >
+              <MonitorPlay className="h-3.5 w-3.5 mr-1" />
+              演示
+            </Button>
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-8 text-xs">
@@ -946,6 +969,14 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
       )}
 
       <MermaidDslHelpDialog open={dslHelpOpen} onOpenChange={setDslHelpOpen} />
+
+      {/* 演示模式 */}
+      <PresentationMode
+        open={presentationOpen}
+        onOpenChange={setPresentationOpen}
+        diagrams={diagrams}
+        startIndex={Math.max(0, diagrams.findIndex((d) => d.id === currentDiagram?.id))}
+      />
     </div>
   )
 }

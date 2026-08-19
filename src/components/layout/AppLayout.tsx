@@ -3,7 +3,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 import { useProjectStore } from '@/stores/projectStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { useSyncNotifications } from '@/hooks/useSyncNotifications'
-import { initAgentSync } from '@/utils/agentSync'
+import { initAgentSync, AGENT_SYNC_INGESTED_EVENT } from '@/utils/agentSync'
 import { pushRecentDiagram } from '@/utils/recent'
 import { CommandPalette } from './CommandPalette'
 import { Button } from '@/components/ui/button'
@@ -144,6 +144,15 @@ export function AppLayout() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // REST API 写回（inbox）摄取后刷新项目/图表列表
+  useEffect(() => {
+    const handler = () => {
+      loadProjects()
+    }
+    window.addEventListener(AGENT_SYNC_INGESTED_EVENT, handler)
+    return () => window.removeEventListener(AGENT_SYNC_INGESTED_EVENT, handler)
+  }, [loadProjects])
+
   useEffect(() => {
     const handlePopState = () => {
       setRouteState(parsePathRoute(window.location.pathname))
@@ -224,6 +233,7 @@ export function AppLayout() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         inProject={view === 'project' && Boolean(selectedProjectId)}
+        canPresent={Boolean(selectedDiagramId)}
         onOpenDiagram={handleSelectDiagramResult}
         onGoSettings={() => setRouteState({ view: 'settings', projectId: null, diagramId: null })}
       />

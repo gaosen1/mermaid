@@ -19,6 +19,8 @@
  *   GET /api/diagrams                     图表清单（?days=7 | ?from&to | ?project= 名称过滤）
  *   GET /api/diagrams/:id                 单个图表元数据
  *   GET /api/diagrams/:id/assets/:kind    产物文件（source|standard|svg|png|portable）
+ *   POST /api/diagrams                    写回笔记（写入 inbox/，Web 应用下次同步时导入）
+ *     body: { name, type: mermaid|markdown|txt, source, projectName? }
  */
 
 import http from 'node:http'
@@ -137,15 +139,52 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://127.0.0.1:${PORT}`)
   const segments = url.pathname.split('/').filter(Boolean) // ['api', ...]
 
-  if (segments[0] !== 'api' || req.method !== 'GET') {
+  if (segments[0] !== 'api') {
     return sendJson(res, 404, { error: 'not found' })
   }
 
   // 鉴权 token 接口：仅限本机
-  if (url.pathname === '/api/auth/token') {
+  if (url.pathname === '/api/auth/token' && req.method === 'GET') {
     if (!isLocal(req)) return sendJson(res, 403, { error: 'token 接口仅限本机调用' })
     const auth = getOrIssueToken(true)
     return sendJson(res, 200, auth)
+  }
+
+  // 写回：POST /api/diagrams → inbox/<uuid>.json
+  if (url.pathname === '/api/diagrams' && req.method === 'POST') {
+    const authResult = checkBearer(req)
+    if (!authResult.ok) return sendJson(res, authResult.code, { error: authResult.error })
+    if (!fs.existsSync(DIR)) {
+      return sendJson(res, 503, { error: `同步目录不存在：${DIR}（请先在 Web 应用中选择同步目录）` })
+    }
+    let body = ''
+    req.on('data', (c) => {
+      body += c
+      if (body.length > 5 * 1024 * 1024) req.destroy()
+    })
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body)
+        if (
+          !payload.name ||
+          typeof payload.source !== 'string' ||
+          !['mermaid', 'markdown', 'txt'].includes(payload.type)
+        ) {
+          return sendJson(res, 400, { error: '需要 name / type(mermaid|markdown|txt) / source 字段' })
+        }
+        const inbox = path.join(DIR, 'inbox')
+        fs.mkdirSync(inbox, { recursive: true })
+        fs.writeFileSync(path.join(inbox, `${crypto.randomUUID()}.json`), JSON.stringify(payload))
+        return sendJson(res, 202, { ok: true, note: '已写入 inbox，Web 应用下次同步时导入' })
+      } catch {
+        return sendJson(res, 400, { error: 'body 不是合法 JSON' })
+      }
+    })
+    return undefined
+  }
+
+  if (req.method !== 'GET') {
+    return sendJson(res, 404, { error: 'not found' })
   }
 
   const authResult = checkBearer(req)

@@ -5,6 +5,7 @@ import {
   FilePlus2,
   FolderPlus,
   History,
+  MonitorPlay,
   Settings,
   Sparkles,
 } from 'lucide-react'
@@ -35,6 +36,8 @@ interface CommandPaletteProps {
   onOpenChange: (open: boolean) => void
   /** 当前是否在项目页（决定项目级动作是否展示） */
   inProject: boolean
+  /** 是否打开了图表（演示模式入口） */
+  canPresent?: boolean
   onOpenDiagram: (projectId: string, diagramId: string) => void
   onGoSettings: () => void
 }
@@ -67,6 +70,7 @@ export function CommandPalette({
   open,
   onOpenChange,
   inProject,
+  canPresent = false,
   onOpenDiagram,
   onGoSettings,
 }: CommandPaletteProps) {
@@ -217,6 +221,12 @@ export function CommandPalette({
             <CommandItem value="action-ai-organize" onSelect={() => action('ai-organize')}>
               <Sparkles className="h-4 w-4" />
               AI 整理目录
+            </CommandItem>
+          )}
+          {inProject && canPresent && (
+            <CommandItem value="action-presentation" onSelect={() => action('presentation')}>
+              <MonitorPlay className="h-4 w-4" />
+              演示模式
             </CommandItem>
           )}
           {!inProject && (

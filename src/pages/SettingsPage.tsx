@@ -516,6 +516,14 @@ function AgentSyncCard() {
               <code className="bg-muted rounded px-1"> GET /api/auth/token </code>
               获取 Token 后调用 <code className="bg-muted rounded px-1">/api/diagrams</code> 等接口。
             </p>
+            <p className="text-xs text-muted-foreground">
+              写回：Agent 可 <code className="bg-muted rounded px-1">POST /api/diagrams</code>
+              （body: <code className="bg-muted rounded px-1">{'{ name, type, source, projectName }'}</code>），
+              笔记进入 inbox/，Web 应用下次同步时自动导入。示例：
+              <code className="bg-muted rounded px-1 block mt-1">
+                {`curl -X POST -H "Authorization: Bearer $TOKEN" -d '{"name":"周报摘要","type":"markdown","source":"# 周报","projectName":"工作"}' http://127.0.0.1:${AGENT_API_DEFAULT_PORT}/api/diagrams`}
+              </code>
+            </p>
           </div>
         </>
       )}
