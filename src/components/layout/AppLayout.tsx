@@ -4,6 +4,8 @@ import { useProjectStore } from '@/stores/projectStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { useSyncNotifications } from '@/hooks/useSyncNotifications'
 import { initAgentSync } from '@/utils/agentSync'
+import { pushRecentDiagram } from '@/utils/recent'
+import { CommandPalette } from './CommandPalette'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Toaster } from '@/components/ui/sonner'
@@ -64,6 +66,7 @@ export function AppLayout() {
   const [routeState, setRouteState] = useState<HashRouteState>(() => parsePathRoute(window.location.pathname))
   const { view, projectId: selectedProjectId, diagramId: selectedDiagramId } = routeState
   const [conflictDialogOpen, setConflictDialogOpen] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   // 启用同步通知
   useSyncNotifications()
@@ -120,6 +123,25 @@ export function AppLayout() {
 
   const handleSelectDiagram = useCallback((diagramId: string | null) => {
     setRouteState((prev) => ({ ...prev, diagramId }))
+  }, [])
+
+  // 导航收口处记录「最近打开」（Cmd+K 面板用）
+  useEffect(() => {
+    if (view === 'project' && selectedProjectId && selectedDiagramId) {
+      pushRecentDiagram(selectedProjectId, selectedDiagramId)
+    }
+  }, [view, selectedProjectId, selectedDiagramId])
+
+  // 全局 Cmd/Ctrl+K 命令面板
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((prev) => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
   useEffect(() => {
@@ -198,6 +220,13 @@ export function AppLayout() {
 
       <Toaster />
       <ConflictDialog open={conflictDialogOpen} onOpenChange={setConflictDialogOpen} />
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        inProject={view === 'project' && Boolean(selectedProjectId)}
+        onOpenDiagram={handleSelectDiagramResult}
+        onGoSettings={() => setRouteState({ view: 'settings', projectId: null, diagramId: null })}
+      />
     </div>
   )
 }

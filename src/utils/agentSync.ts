@@ -5,6 +5,7 @@ import { parseAllEdgeStylesFromSource } from './edgeDsl'
 import { applyEdgeStyle } from '@/components/mermaid/svgStyleApplier'
 import { toStandardMermaid, toPortableMarkdown } from './portable'
 import { getDiagramFileExtension } from './diagram'
+import { cropSvgToContentBBox } from './svgCrop'
 import type { DiagramFolder } from '@/types'
 
 /**
@@ -251,21 +252,7 @@ export async function renderMermaidAssets(source: string): Promise<{ svg: string
   svgEl.setAttribute('xmlns', SVG_NS)
 
   // 按内容 bbox 裁剪 viewBox，去除布局产生的上下大片空白
-  const host = document.createElement('div')
-  host.style.cssText = 'position:absolute;left:-10000px;top:-10000px;visibility:hidden;pointer-events:none;'
-  host.appendChild(container)
-  document.body.appendChild(host)
-  try {
-    const bbox = svgEl.getBBox()
-    if (bbox && bbox.width > 0 && bbox.height > 0) {
-      const pad = 8
-      svgEl.setAttribute('viewBox', `${bbox.x - pad} ${bbox.y - pad} ${bbox.width + pad * 2} ${bbox.height + pad * 2}`)
-    }
-  } catch {
-    // 忽略裁剪失败，保留原 viewBox
-  } finally {
-    host.remove()
-  }
+  cropSvgToContentBBox(svgEl)
   svgEl.removeAttribute('width')
   svgEl.removeAttribute('height')
 

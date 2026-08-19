@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useFolderStore } from '@/stores/folderStore'
 import { useSyncStore } from '@/stores/syncStore'
@@ -23,6 +23,8 @@ import {
 import { Label } from '@/components/ui/label'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Badge } from '@/components/ui/badge'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -53,6 +55,7 @@ import {
   Loader2,
   FolderInput,
   FilePlus2,
+  Tag,
 } from 'lucide-react'
 const DIAGRAM_TYPE_LABELS: Record<DiagramType, string> = {
   mermaid: 'Mermaid',
@@ -143,6 +146,69 @@ import { ApiKeyDialog } from '@/components/mermaid/ApiKeyDialog'
 import { useAiNameSuggestions } from '@/components/mermaid/useAiNameSuggestions'
 import { getAiApiKey } from '@/utils/aiChat'
 import { isAiNameableType } from '@/utils/aiOrganize'
+import { requestThumbnail, subscribeThumbs, getThumb } from '@/utils/thumbnail'
+import { PALETTE_ACTION_EVENT } from '@/utils/paletteAction'
+
+/** 列表缩略图：mermaid 惰性生成、svg 直接内嵌；其余类型不显示 */
+function DiagramThumb({ diagram }: { diagram: Diagram }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true)
+          obs.disconnect()
+        }
+      },
+      { rootMargin: '100px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (visible) requestThumbnail(diagram.id, diagram.source)
+  }, [visible, diagram.id, diagram.source])
+
+  const thumb = useSyncExternalStore(subscribeThumbs, () => getThumb(diagram.id))
+
+  if (diagram.type === 'svg') {
+    if (diagram.source.length >= 100 * 1024) return null
+    return (
+      <div
+        ref={ref}
+        className="diagram-list-item-thumb mt-1 h-14 rounded border bg-muted/30 overflow-hidden flex items-center justify-center [&_svg]:max-h-full [&_svg]:max-w-full"
+        dangerouslySetInnerHTML={{ __html: diagram.source }}
+      />
+    )
+  }
+  if (diagram.type !== 'mermaid') return null
+
+  return (
+    <div
+      ref={ref}
+      className="diagram-list-item-thumb mt-1 h-14 rounded border bg-muted/30 overflow-hidden flex items-center justify-center"
+    >
+      {thumb ? (
+        <div
+          className="w-full h-full flex items-center justify-center [&_svg]:max-h-full [&_svg]:max-w-full"
+          dangerouslySetInnerHTML={{ __html: thumb }}
+        />
+      ) : (
+        <Skeleton className="h-10 w-3/4" />
+      )}
+    </div>
+  )
+}
+
+/** 逗号分隔标签输入 → 去重数组 */
+function parseTagsInput(raw: string): string[] {
+  return [...new Set(raw.split(',').map((t) => t.trim()).filter(Boolean))]
+}
 
 interface DiagramListProps {
   projectId: string
@@ -187,25 +253,28 @@ function SortableDiagramItem({
       }`}
       onClick={(e) => onClick(e, diagram)}
     >
-      <div className="diagram-list-item-content flex items-center gap-1.5 overflow-hidden flex-1">
-        {depth > 0 && <span style={{ width: depth * 16 }} className="shrink-0" />}
-        <div
-          {...attributes}
-          {...listeners}
-          className="diagram-list-item-drag-handle cursor-grab active:cursor-grabbing shrink-0"
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
+      <div className="diagram-list-item-content flex-1 min-w-0 py-0.5">
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          {depth > 0 && <span style={{ width: depth * 16 }} className="shrink-0" />}
+          <div
+            {...attributes}
+            {...listeners}
+            className="diagram-list-item-drag-handle cursor-grab active:cursor-grabbing shrink-0"
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </div>
+          <DiagramTypeIcon type={diagram.type} className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
+            </TooltipTrigger>
+            <TooltipContent side="right">{diagram.name}</TooltipContent>
+          </Tooltip>
+          {isAuthenticated && diagram.syncStatus && (
+            <SyncStatusBadge status={diagram.syncStatus} size="sm" className="diagram-list-item-sync-status" />
+          )}
         </div>
-        <DiagramTypeIcon type={diagram.type} className="diagram-list-item-icon h-4 w-4 shrink-0 text-muted-foreground" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="diagram-list-item-name truncate text-sm">{diagram.name}</span>
-          </TooltipTrigger>
-          <TooltipContent side="right">{diagram.name}</TooltipContent>
-        </Tooltip>
-        {isAuthenticated && diagram.syncStatus && (
-          <SyncStatusBadge status={diagram.syncStatus} size="sm" className="diagram-list-item-sync-status" />
-        )}
+        <DiagramThumb diagram={diagram} />
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -537,6 +606,9 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const [deletingFolder, setDeletingFolder] = useState<DiagramFolder | null>(null)
 
   const [inputName, setInputName] = useState('')
+  const [inputTags, setInputTags] = useState('')
+  // 标签过滤条（多选 AND）
+  const [filterTags, setFilterTags] = useState<string[]>([])
   const [newDiagramType, setNewDiagramType] = useState<DiagramType>('mermaid')
   const [editDiagramType, setEditDiagramType] = useState<DiagramType>('mermaid')
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
@@ -571,10 +643,17 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Build tree
-  const tree = buildTree(diagrams, folders, null)
+  // Build tree（标签过滤后）
+  const allDiagramTags = [...new Set(diagrams.flatMap((d) => d.tags ?? []))].sort((a, b) =>
+    a.localeCompare(b, 'zh')
+  )
+  const visibleDiagrams =
+    filterTags.length === 0
+      ? diagrams
+      : diagrams.filter((d) => filterTags.every((t) => (d.tags ?? []).includes(t)))
+  const tree = buildTree(visibleDiagrams, folders, null)
   // 根层所有 sortable ID（文件夹 + 图表混排）
-  const rootItemIds = getContainerItems(diagrams, folders, null).map((i) => i.id)
+  const rootItemIds = getContainerItems(visibleDiagrams, folders, null).map((i) => i.id)
 
   // ── 自定义碰撞检测 ──
   // 指针落在文件夹 drop zone 的中心区才触发移入；落在顶部/底部固定像素的边缘区
@@ -709,10 +788,13 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     if (createDiagramFolderId) {
       await moveDiagramToFolder(diagram.id, createDiagramFolderId)
     }
-    const createdDiagram = { ...diagram, folderId: createDiagramFolderId }
+    const tags = parseTagsInput(inputTags)
+    if (tags.length > 0) await updateDiagram(diagram.id, { tags })
+    const createdDiagram = { ...diagram, folderId: createDiagramFolderId, tags: tags.length ? tags : diagram.tags }
     setCurrentDiagram(createdDiagram)
     onSelectDiagram(createdDiagram)
     setInputName('')
+    setInputTags('')
     setNewDiagramType('mermaid')
     setCreateDiagramFolderId(null)
     setCreateDiagramOpen(false)
@@ -725,9 +807,14 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
 
   const handleEditDiagram = async () => {
     if (!editingDiagram || !inputName.trim()) return
-    await updateDiagram(editingDiagram.id, { name: inputName, type: editDiagramType })
+    await updateDiagram(editingDiagram.id, {
+      name: inputName,
+      type: editDiagramType,
+      tags: parseTagsInput(inputTags),
+    })
     setEditingDiagram(null)
     setInputName('')
+    setInputTags('')
     setEditDiagramOpen(false)
   }
 
@@ -753,6 +840,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   const openEditDiagramDialog = (diagram: Diagram) => {
     setEditingDiagram(diagram)
     setInputName(diagram.name)
+    setInputTags((diagram.tags ?? []).join(', '))
     setEditDiagramType(diagram.type)
     setEditDiagramOpen(true)
     nameSuggestions.reset()
@@ -910,6 +998,28 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     toggleFolderCollapsed(projectId, id)
   }
 
+  // ── 命令面板动作：新建图表 / 新建文件夹 / AI 整理 ──
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const action = (e as CustomEvent<string>).detail
+      if (action === 'new-diagram') {
+        setCreateDiagramFolderId(getTargetFolderId())
+        setInputName('')
+        setInputTags('')
+        setNewDiagramType('mermaid')
+        setCreateDiagramOpen(true)
+      } else if (action === 'new-folder') {
+        setCreateFolderParentId(null)
+        setInputName('')
+        setCreateFolderOpen(true)
+      } else if (action === 'ai-organize') {
+        handleAiOrganizeClick()
+      }
+    }
+    window.addEventListener(PALETTE_ACTION_EVENT, handler)
+    return () => window.removeEventListener(PALETTE_ACTION_EVENT, handler)
+  })
+
   // ── Load folders alongside diagrams ──
 
   // folders are loaded by parent (ProjectPage) via useFolderStore, same as diagrams
@@ -931,7 +1041,7 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
             <Button
               size="sm"
               className="flex-1"
-              onClick={() => { setCreateDiagramFolderId(getTargetFolderId()); setInputName(''); setNewDiagramType('mermaid') }}
+              onClick={() => { setCreateDiagramFolderId(getTargetFolderId()); setInputName(''); setInputTags(''); setNewDiagramType('mermaid') }}
             >
               <Plus className="h-4 w-4 mr-1" />
               新建图表
@@ -950,6 +1060,10 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
               <div className="space-y-2">
                 <Label>图表名称（可留空）</Label>
                 <Input value={inputName} onChange={(e) => setInputName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateDiagram() }} placeholder="输入图表名称" />
+              </div>
+              <div className="space-y-2">
+                <Label>标签（可选，用逗号分隔）</Label>
+                <Input value={inputTags} onChange={(e) => setInputTags(e.target.value)} placeholder="例如: 周报素材, 进行中" />
               </div>
               <div className="space-y-2">
                 <Label>图表类型</Label>
@@ -1033,6 +1147,32 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         />
       </div>
 
+      {/* 标签过滤条 */}
+      {allDiagramTags.length > 0 && (
+        <div className="diagram-list-tag-filter px-3 py-1.5 border-b flex items-center gap-1.5 flex-wrap">
+          <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          {allDiagramTags.map((tag) => (
+            <Badge
+              key={tag}
+              variant={filterTags.includes(tag) ? 'default' : 'outline'}
+              className="cursor-pointer text-xs"
+              onClick={() =>
+                setFilterTags((prev) =>
+                  prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+                )
+              }
+            >
+              {tag}
+            </Badge>
+          ))}
+          {filterTags.length > 0 && (
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setFilterTags([])}>
+              清除
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Tree */}
       <ScrollArea
         className="flex-1 min-h-0"
@@ -1040,10 +1180,10 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
         contentClassName="block min-w-0"
         onClick={handleTreeBackgroundClick}
       >
-        {diagrams.length === 0 && folders.length === 0 ? (
+        {visibleDiagrams.length === 0 && folders.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
             <FileCode2 className="h-8 w-8 mb-2" />
-            <p>暂无图表</p>
+            <p>{filterTags.length > 0 ? '无匹配标签的图表' : '暂无图表'}</p>
           </div>
         ) : (
           <DndContext
@@ -1149,6 +1289,10 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
                   ))}
                 </div>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label>标签（可选，用逗号分隔）</Label>
+              <Input value={inputTags} onChange={(e) => setInputTags(e.target.value)} placeholder="例如: 周报素材, 进行中" />
             </div>
             <div className="space-y-2">
               <Label>图表类型</Label>

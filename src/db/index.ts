@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Project, Diagram, DiagramFolder, FolderCollapseState, Snapshot, UserSettings, AiChatSession } from '@/types'
+import type { Project, Diagram, DiagramFolder, FolderCollapseState, Snapshot, UserSettings, AiChatSession, DiagramThumbRecord } from '@/types'
 import type { SyncLogEntry, SyncQueueItem } from '@/types/sync'
 
 const db = new Dexie('MermaidLocalDB') as Dexie & {
@@ -17,6 +17,8 @@ const db = new Dexie('MermaidLocalDB') as Dexie & {
   aiChats: EntityTable<AiChatSession, 'id'>
   // 通用键值表：存放 FileSystemDirectoryHandle 等本地句柄
   kv: EntityTable<{ key: string; value: unknown }, 'key'>
+  // 列表缩略图缓存
+  thumbs: EntityTable<DiagramThumbRecord, 'diagramId'>
 }
 
 // 版本 1：原有结构
@@ -234,6 +236,21 @@ db.version(11).stores({
   syncQueue: '++id, entityType, entityId, priority, createdAt',
   aiChats: 'id, diagramId, updatedAt',
   kv: 'key',
+})
+
+// 版本 12：图表级标签索引 + 缩略图缓存表
+db.version(12).stores({
+  projects: 'id, name, updatedAt, order, *tags, syncStatus, lastSyncTime',
+  diagrams: 'id, projectId, folderId, name, type, updatedAt, order, syncStatus, lastSyncTime, *tags',
+  folders: 'id, projectId, parentId, name, order, updatedAt, syncStatus, lastSyncTime',
+  folderCollapse: 'folderId, projectId',
+  snapshots: 'id, diagramId, createdAt, syncStatus, lastSyncTime',
+  settings: 'id',
+  syncLog: '++id, timestamp, status, entityType, entityId',
+  syncQueue: '++id, entityType, entityId, priority, createdAt',
+  aiChats: 'id, diagramId, updatedAt',
+  kv: 'key',
+  thumbs: 'diagramId',
 })
 
 export { db }

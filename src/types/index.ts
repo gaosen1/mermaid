@@ -55,6 +55,18 @@ export interface Diagram {
   // 上次同步时远端文件的 git blob SHA，用于免下载检测远端变更
   remoteSha?: string
   syncError?: string
+  // 图表级标签（横向分类，与文件夹互补）
+  tags?: string[]
+}
+
+/**
+ * 列表缩略图缓存记录（thumbs 表）
+ */
+export interface DiagramThumbRecord {
+  diagramId: string
+  /** source 的 djb2 哈希，用于失效判断 */
+  hash: string
+  svg: string
 }
 
 /**

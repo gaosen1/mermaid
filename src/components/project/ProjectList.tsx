@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useProjectStore, fuzzyMatch } from '@/stores/projectStore'
+import { useProjectStore } from '@/stores/projectStore'
 import type { ProjectSortMode } from '@/stores/projectStore'
 import { useSyncStore } from '@/stores/syncStore'
-import { db } from '@/db'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -56,7 +55,9 @@ import {
 } from '@/utils/export'
 import { SyncStatusBadge } from '@/components/sync'
 import { NoteReviewDialog } from '@/components/diagram/NoteReviewDialog'
-import type { Diagram, Project } from '@/types'
+import { PALETTE_ACTION_EVENT } from '@/utils/paletteAction'
+import { fullSearchDiagrams, type DiagramSearchHit } from '@/utils/search'
+import type { Project } from '@/types'
 import {
   DndContext,
   DragOverlay,
@@ -86,9 +87,19 @@ const SORT_LABELS: Record<ProjectSortMode, string> = {
 
 // ─── DiagramSearchResult ──────────────────────────────────────────────────────
 
-interface DiagramResult {
-  diagram: Diagram
-  project: Project
+/** 命中词高亮（纯 React 文本拆分） */
+function Highlight({ text, query }: { text: string; query: string }) {
+  const q = query.trim().toLowerCase()
+  if (!q) return <>{text}</>
+  const idx = text.toLowerCase().indexOf(q)
+  if (idx < 0) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-transparent text-primary font-semibold">{text.slice(idx, idx + q.length)}</mark>
+      {text.slice(idx + q.length)}
+    </>
+  )
 }
 
 // ─── SortableProjectCard ──────────────────────────────────────────────────────
@@ -241,8 +252,17 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
   // 跨项目笔记回顾
   const [reviewOpen, setReviewOpen] = useState(false)
 
-  // 图表搜索结果
-  const [diagramResults, setDiagramResults] = useState<DiagramResult[]>([])
+  // 图表搜索结果（名称/标签/内容全文搜索）
+  const [diagramResults, setDiagramResults] = useState<DiagramSearchHit[]>([])
+
+  // 命令面板动作：笔记回顾
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if ((e as CustomEvent<string>).detail === 'review') setReviewOpen(true)
+    }
+    window.addEventListener(PALETTE_ACTION_EVENT, handler)
+    return () => window.removeEventListener(PALETTE_ACTION_EVENT, handler)
+  }, [])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -250,26 +270,12 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
   const allTags = getAllTags()
   const isManualSort = sortMode === 'manual'
 
-  // ── 图表全局搜索 ──
+  // ── 图表全局搜索（全文） ──
   const searchDiagrams = useCallback(async (query: string) => {
     if (!query.trim()) { setDiagramResults([]); return }
-    const allDiagrams = await db.diagrams.toArray()
-    const matched = allDiagrams.filter((d) => fuzzyMatch(d.name, query))
-    const projectMap = new Map(projects.map((p) => [p.id, p]))
-    const results: DiagramResult[] = matched
-      .map((d) => {
-        const project = projectMap.get(d.projectId)
-        return project ? { diagram: d, project } : null
-      })
-      .filter((r): r is DiagramResult => r !== null)
-      // 按 diagram 名称相关性排序（完整包含优先）
-      .sort((a, b) => {
-        const aq = a.diagram.name.toLowerCase().includes(query.toLowerCase()) ? 0 : 1
-        const bq = b.diagram.name.toLowerCase().includes(query.toLowerCase()) ? 0 : 1
-        return aq - bq || a.diagram.name.localeCompare(b.diagram.name, 'zh')
-      })
-    setDiagramResults(results)
-  }, [projects])
+    const hits = await fullSearchDiagrams(query, 30)
+    setDiagramResults(hits)
+  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => searchDiagrams(searchQuery), 150)
@@ -533,7 +539,7 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
               图表 · {extraDiagramResults.length} 个结果
             </p>
             <div className="space-y-1">
-              {extraDiagramResults.map(({ diagram, project }) => (
+              {extraDiagramResults.map(({ diagram, project, snippet }) => (
                 <button
                   key={diagram.id}
                   className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent transition-colors"
@@ -547,8 +553,13 @@ export function ProjectList({ onSelectProject, onSelectDiagramResult }: ProjectL
                 >
                   <FileCode2 className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="flex-1 min-w-0">
-                    <span className="text-sm font-medium truncate block">{diagram.name}</span>
-                    <span className="text-xs text-muted-foreground truncate block">{project.name}</span>
+                    <span className="text-sm font-medium truncate block">
+                      <Highlight text={diagram.name} query={searchQuery} />
+                    </span>
+                    <span className="text-xs text-muted-foreground truncate block">
+                      {project.name}
+                      {snippet && <> · <Highlight text={snippet} query={searchQuery} /></>}
+                    </span>
                   </div>
                   <Badge variant="secondary" className="text-xs shrink-0">{diagram.type}</Badge>
                 </button>
