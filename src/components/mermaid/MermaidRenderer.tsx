@@ -14,17 +14,30 @@ import { ErrorAlert } from '@/components/ui/error-alert'
 import { RotateCcw, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
 import { useEdgeSelection, type SelectedEdge } from './useEdgeSelection'
 import { useNodeSelection, type SelectedNode } from './useNodeSelection'
+import { useSequenceSelection, type SelectedSequenceItem } from './useSequenceSelection'
 import { useViewTransform } from './useViewTransform'
 import { cleanupMermaidErrors, setupSvgEdgeInteraction, setupSvgNodeInteraction, setupSvgSubgraphInteraction } from './svgUtils'
 import { subscribeSpaceDown, isSpaceDown } from '@/utils/shortcuts'
-import { applyEdgeStyle, applyNodeStyle, applySubgraphStyle } from './svgStyleApplier'
+import { applyEdgeStyle, applyNodeStyle, applySubgraphStyle, applySequenceMsgStyle, applySequenceParticipantStyle } from './svgStyleApplier'
 import { RENDER_CONFIG } from './constants'
 import type { LayoutType } from '@/types'
 import type { EdgeStyle } from '@/utils/edgeDsl'
 import { parseAllEdgeStylesFromSource } from '@/utils/edgeDsl'
 import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
+import { parseSequenceMsgStyles, parseSequenceParticipants, msgCssToEdgeStyle } from '@/utils/sequenceDsl'
+import type { SequenceParticipantStyle } from '@/utils/sequenceDsl'
 
 type MermaidTheme = NonNullable<MermaidRendererProps['theme']>
+
+/** 应用时序图 DSL 样式（消息线 + 参与者） */
+function applySequenceStyles(svgEl: SVGSVGElement, source: string): void {
+  for (const { index, css } of parseSequenceMsgStyles(source)) {
+    applySequenceMsgStyle(svgEl, index, msgCssToEdgeStyle(css))
+  }
+  for (const p of parseSequenceParticipants(source)) {
+    if (p.style) applySequenceParticipantStyle(svgEl, p.alias ?? p.id, p.style)
+  }
+}
 
 export interface ExportSvgSource {
   svgString: string
@@ -50,6 +63,8 @@ export interface MermaidRendererRef {
   clearNodeSelection: () => void
   applyNodeStyleDirect: (nodeId: string, style: NodeStyle) => boolean
   applySubgraphStyleDirect: (subgraphId: string, style: SubgraphStyle) => boolean
+  applySequenceMsgStyleDirect: (index: number, style: EdgeStyle) => boolean
+  applySequenceParticipantStyleDirect: (label: string, style: SequenceParticipantStyle) => boolean
   getSvgElement: () => SVGSVGElement | null
   markStyleOnlySource: (source: string) => void
   getScale: () => number
@@ -70,6 +85,10 @@ interface MermaidRendererProps {
   onEdgeSelect?: (edge: SelectedEdge | null) => void
   onNodeSelect?: (node: SelectedNode | null) => void
   onNodeDoubleClick?: (node: SelectedNode) => void
+  sequenceSelectionEnabled?: boolean
+  onSequenceSelect?: (item: SelectedSequenceItem | null) => void
+  onSequenceDoubleClick?: (item: SelectedSequenceItem) => void
+  resolveParticipantId?: (label: string) => string | null
 }
 
 export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererProps>(
@@ -89,6 +108,10 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       onEdgeSelect,
       onNodeSelect,
       onNodeDoubleClick,
+      sequenceSelectionEnabled = false,
+      onSequenceSelect,
+      onSequenceDoubleClick,
+      resolveParticipantId,
     },
     ref
   ) => {
@@ -144,6 +167,15 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       enabled: nodeSelectionEnabled,
       onSelect: onNodeSelect,
       onDoubleClick: onNodeDoubleClick,
+    })
+
+    // 时序图选中（参与者/消息线）
+    useSequenceSelection({
+      containerRef,
+      enabled: sequenceSelectionEnabled,
+      resolveParticipantId: resolveParticipantId ?? (() => null),
+      onSelect: onSequenceSelect,
+      onDoubleClick: onSequenceDoubleClick,
     })
 
     // 初始化 Mermaid
@@ -225,6 +257,9 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
               for (const { index, style } of leaderStyles) {
                 applyEdgeStyle(svgEl, index, style)
               }
+
+              // 时序图 DSL 样式（消息线 / 参与者）
+              applySequenceStyles(svgEl, source)
             }
 
             if (animationCSS) {
@@ -314,6 +349,7 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
       for (const { index, style } of leaderStyles) {
         applyEdgeStyle(svgEl, index, style)
       }
+      applySequenceStyles(svgEl, source)
 
       if (animationCSS) {
         injectStyles(exportContainer, animationCSS)
@@ -410,6 +446,16 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
           if (!svg) return false
           return applySubgraphStyle(svg, subgraphId, style)
+        },
+        applySequenceMsgStyleDirect: (index: number, style: EdgeStyle) => {
+          const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
+          if (!svg) return false
+          return applySequenceMsgStyle(svg, index, style)
+        },
+        applySequenceParticipantStyleDirect: (label: string, style: SequenceParticipantStyle) => {
+          const svg = containerRef.current?.querySelector('svg') as SVGSVGElement
+          if (!svg) return false
+          return applySequenceParticipantStyle(svg, label, style)
         },
         getSvgElement: () => containerRef.current?.querySelector('svg') as SVGSVGElement | null,
         markStyleOnlySource: (newSource: string) => {

@@ -254,6 +254,12 @@ g.node.node-blink {
   display: block !important;
 }
 
+/* 时序图参与者/消息线选中高亮 */
+.sequence-selected {
+  stroke: var(--primary) !important;
+  stroke-width: 2px !important;
+}
+
 /* AI 输出的 Markdown 渲染样式（聊天气泡与回顾总结共用） */
 .ai-md { font-size: 12px; line-height: 1.6; min-width: 0; }
 .ai-md p { margin: 0.35em 0; }

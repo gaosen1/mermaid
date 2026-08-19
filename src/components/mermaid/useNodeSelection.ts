@@ -264,7 +264,11 @@ export function useNodeSelection({
     let nodeGroup: SVGGElement | null = null
 
     if (nodeType === 'subgraph') {
-      nodeGroup = svg.querySelector(`g.cluster[id="${nodeId}"]`) as SVGGElement | null
+      // cluster id 带渲染容器前缀，用剥离后的 id 匹配
+      nodeGroup =
+        (Array.from(svg.querySelectorAll('g.cluster')).find(
+          (c) => getSubgraphIdFromElement(c) === nodeId
+        ) as SVGGElement | null) ?? null
     } else {
       nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`) as SVGGElement | null
     }

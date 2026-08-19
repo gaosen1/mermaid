@@ -6,6 +6,7 @@
 
 import type { EdgeStyle } from '@/utils/edgeDsl'
 import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
+import type { SequenceParticipantStyle } from '@/utils/sequenceDsl'
 
 export type { NodeStyle, SubgraphStyle }
 
@@ -252,8 +253,11 @@ export function findSubgraphElement(
   svg: SVGSVGElement,
   subgraphId: string
 ): { group: SVGGElement | null; shape: SVGElement | null; labelSpan: HTMLSpanElement | null } {
-  // Mermaid subgraph 结构: g.cluster[id="{subgraphId}"]
-  const clusterGroup = svg.querySelector(`g.cluster[id="${subgraphId}"]`)
+  // Mermaid subgraph 结构: g.cluster[id="{containerPrefix}{subgraphId}"]，id 带渲染容器前缀
+  const clusterGroup =
+    (Array.from(svg.querySelectorAll('g.cluster')).find(
+      (c) => (c.getAttribute('id') ?? '').replace(/^mermaid-(?:render|export)-\d+-[a-z0-9]+-/, '') === subgraphId
+    ) as SVGGElement | null) ?? null
   if (!clusterGroup) return { group: null, shape: null, labelSpan: null }
 
   // 形状元素: rect (subgraph 背景)
@@ -326,4 +330,55 @@ export function applySubgraphStyle(svg: SVGSVGElement, subgraphId: string, style
 
   applySubgraphStyleToElement(shape, labelSpan, style)
   return true
+}
+
+// ============ 时序图样式应用 ============
+
+/**
+ * 应用消息线样式：.messageLine0/.messageLine1 按文档序即消息顺序
+ */
+export function applySequenceMsgStyle(svg: SVGSVGElement, index: number, style: EdgeStyle): boolean {
+  const lines = svg.querySelectorAll('.messageLine0, .messageLine1')
+  const el = lines[index] as SVGPathElement | null
+  if (!el) return false
+  applyEdgeStyleToElement(el, style)
+  return true
+}
+
+/**
+ * 应用参与者样式：按显示文本配对 rect.actor 与 text.actor（用坐标属性配对，不依赖布局）
+ */
+export function applySequenceParticipantStyle(
+  svg: SVGSVGElement,
+  label: string,
+  style: SequenceParticipantStyle
+): boolean {
+  const texts = Array.from(svg.querySelectorAll('text.actor')) as SVGTextElement[]
+  const rects = Array.from(svg.querySelectorAll('rect.actor')) as SVGRectElement[]
+  let applied = false
+
+  for (const text of texts) {
+    if ((text.textContent || '').trim() !== label) continue
+    const tx = Number(text.getAttribute('x') ?? 0)
+    const ty = Number(text.getAttribute('y') ?? 0)
+    const rect = rects.find((r) => {
+      const rx = Number(r.getAttribute('x') ?? 0)
+      const ry = Number(r.getAttribute('y') ?? 0)
+      const rw = Number(r.getAttribute('width') ?? 0)
+      const rh = Number(r.getAttribute('height') ?? 0)
+      return tx >= rx && tx <= rx + rw && ty >= ry && ty <= ry + rh
+    })
+    if (rect) {
+      if (style.fill) rect.style.fill = style.fill
+      else rect.style.removeProperty('fill')
+      if (style.stroke) rect.style.stroke = style.stroke
+      else rect.style.removeProperty('stroke')
+      if (style.strokeWidth) rect.style.strokeWidth = style.strokeWidth
+      if (style.strokeDasharray) rect.style.strokeDasharray = style.strokeDasharray
+    }
+    if (style.color) text.style.fill = style.color
+    else text.style.removeProperty('fill')
+    applied = true
+  }
+  return applied
 }

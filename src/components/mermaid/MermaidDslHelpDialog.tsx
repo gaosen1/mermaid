@@ -53,6 +53,8 @@ const LLM_PROMPT = `请为我生成 Mermaid 代码，并遵守以下平台支持
    - animation:mermaid-edge-dash-leader 1.2s linear infinite
 9. 如无特殊说明，自定义样式优先使用暗色主题：深色填充搭配高对比度的浅色文字和边框，保证可读性。
 10. 节点 ID 使用英文、数字或下划线，避免中文 ID；中文放在节点文本里。
+11. 时序图（sequenceDiagram）扩展：participant ID@{fill:#..;stroke:#..;color:#..} 声明参与者样式；
+    msgStyle N stroke:#..,animation:mermaid-edge-dash 1.5s linear infinite 设置第 N 条消息（从 0 开始）。
 
 请基于我的需求生成一份结构清晰、颜色分组明确、包含必要自定义样式的 Mermaid 图。`
 

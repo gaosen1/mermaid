@@ -1,4 +1,5 @@
 import type { ParsedDSL, AnimationConfig, StyleConfig, DiagramConfig } from '@/types'
+import { stripSequenceDSL } from './sequenceDsl'
 
 const ANIMATION_CSS: Record<string, string> = {
   slow: `
@@ -94,6 +95,10 @@ export function parseExtendedDSL(source: string): ParsedDSL {
   const animations: AnimationConfig[] = []
   const styles: StyleConfig[] = []
   const classes: string[] = []
+
+  // 时序图 DSL（msgStyle / participant @{}）须先剥离，
+  // 否则通用节点 @{} 转译会产出 sequenceDiagram 不支持的 style 指令
+  source = stripSequenceDSL(source)
 
   // 匹配 NODE@{...} 格式，但只处理包含自定义属性的
   const extendedSyntaxRegex = /(\w+)@\{\s*([^}]+)\s*\}/g

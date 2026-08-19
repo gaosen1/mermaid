@@ -63,6 +63,23 @@ linkStyle 2 stroke:#0F6E56,animation:mermaid-edge-dash-leader 3s linear infinite
 linkStyle 3 stroke:#993C1D,animation:mermaid-edge-dash-leader 1.2s linear infinite  /* 快速，带一个流动光点 */
 ${FENCE}
 
+## 时序图（sequenceDiagram）扩展语法
+
+时序图支持两类扩展写法：
+
+参与者样式：写在 participant/actor 声明的 ID 后面：
+
+${FENCE}
+sequenceDiagram
+  participant GW@{fill:#1F2937;stroke:#60A5FA;color:#F3F4F6} as 网关
+  participant SVC@{fill:#14532D;stroke:#86EFAC;color:#F0FDF4} as 服务
+  GW ->> SVC: 请求
+  msgStyle 0 stroke:#60A5FA,stroke-width:2px,animation:mermaid-edge-dash 1.5s linear infinite
+${FENCE}
+
+- 参与者 @{} 支持 fill/stroke/color/stroke-width/stroke-style，与节点同套取值；
+- msgStyle N 的 N 为消息出现顺序（从 0 开始），属性集与 linkStyle 相同（含上面 4 种连线动画值）。
+
 ## 配色建议
 
 如无特殊说明，优先使用暗色主题：深色填充搭配高对比度的浅色边框和文字，保证文字可读；用颜色给节点分组时，同一组内颜色尽量统一。除非用户明确要求，避免使用 blink 闪烁动画（闪烁影响阅读体验）；需要强调节点时优先使用 pulse 或连线动画。

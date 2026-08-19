@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { CodeEditor } from './CodeEditor'
 import { EdgeStylePanel } from './EdgeStylePanel'
@@ -49,6 +49,18 @@ import { getFolderPath } from '@/utils/folder'
 import { getDiagramFilename } from '@/utils/diagram'
 import type { SelectedEdge } from './useEdgeSelection'
 import type { SelectedNode } from './useNodeSelection'
+import type { SelectedSequenceItem } from './useSequenceSelection'
+import {
+  isSequenceDiagramSource,
+  parseSequenceParticipants,
+  parseSequenceMsgStyles,
+  msgCssToEdgeStyle,
+  seqStyleToNodeStyle,
+  nodeStyleToSeqStyle,
+  updateSourceWithParticipantStyle,
+  updateSourceWithMsgStyle,
+  updateSourceWithParticipantAlias,
+} from '@/utils/sequenceDsl'
 import type { LayoutType } from '@/types'
 
 const EDITOR_STORAGE_KEY = 'diagram-editor-state'
@@ -117,6 +129,17 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
   const [nodeShape, setNodeShape] = useState<NodeShape | null>(null)
   const [lastNodePosition, setLastNodePosition] = useState({ x: 0, y: 0 })
   const [isEditingNodeText, setIsEditingNodeText] = useState(false)
+
+  // 时序图选中状态（参与者复用 NodeStylePanel，消息线复用 EdgeStylePanel）
+  const [selectedSequence, setSelectedSequence] = useState<SelectedSequenceItem | null>(null)
+  const [seqNodeStyle, setSeqNodeStyle] = useState<NodeStyle>({})
+  const [seqMsgStyle, setSeqMsgStyle] = useState<EdgeStyle>({})
+  const [seqRename, setSeqRename] = useState<{
+    participantId: string
+    position: { x: number; y: number }
+    value: string
+  } | null>(null)
+  const seqSourceTimerRef = useRef<number | null>(null)
 
   // 提前解构 source，供 useSourceSync 使用
   const { source, layout, theme, hasChanges } = editorState
@@ -351,6 +374,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     (edge: SelectedEdge | null) => {
       setSelectedEdge(edge)
       if (edge) {
+        setSelectedSequence(null)
         // 保存位置，供关闭时使用
         setLastEdgePosition(edge.position)
         // 解析当前 edge 的样式
@@ -405,6 +429,7 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
 
       setSelectedNode(node)
       if (node) {
+        setSelectedSequence(null)
         // 保存位置，供关闭时使用
         setLastNodePosition(node.position)
         // 根据类型解析样式
@@ -476,6 +501,88 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
     [startInlineEdit]
   )
 
+  // ── 时序图可视化编辑 ──
+  const isSequence = isSequenceDiagramSource(source)
+  const sequenceParticipants = useMemo(
+    () => (isSequence ? parseSequenceParticipants(source) : []),
+    [isSequence, source]
+  )
+
+  const resolveParticipantId = useCallback(
+    (label: string) =>
+      sequenceParticipants.find((p) => (p.alias ?? p.id) === label)?.id ?? null,
+    [sequenceParticipants]
+  )
+
+  // 序列样式写回防抖（即时预览 + 延迟同步 source）
+  const applySequenceSourceDebounced = useCallback((next: string) => {
+    if (seqSourceTimerRef.current) clearTimeout(seqSourceTimerRef.current)
+    seqSourceTimerRef.current = window.setTimeout(() => {
+      rendererRef.current?.markStyleOnlySource(next)
+      setEditorState((prev) => ({ ...prev, source: next, hasChanges: true }))
+    }, 400)
+  }, [])
+
+  const handleSequenceSelect = useCallback(
+    (item: SelectedSequenceItem | null) => {
+      setSelectedSequence(item)
+      if (!item) return
+      setSelectedNode(null)
+      setSelectedEdge(null)
+      if (item.kind === 'participant') {
+        const p = sequenceParticipants.find((pp) => pp.id === item.participantId)
+        setSeqNodeStyle(p?.style ? seqStyleToNodeStyle(p.style) : {})
+      } else {
+        const m = parseSequenceMsgStyles(source).find((mm) => mm.index === item.messageIndex)
+        setSeqMsgStyle(m ? msgCssToEdgeStyle(m.css) : {})
+      }
+    },
+    [sequenceParticipants, source]
+  )
+
+  const handleSequenceDoubleClick = useCallback((item: SelectedSequenceItem) => {
+    if (item.kind !== 'participant' || !item.participantId) return
+    setSelectedSequence(null)
+    setSeqRename({
+      participantId: item.participantId,
+      position: item.position,
+      value: item.label ?? '',
+    })
+  }, [])
+
+  const handleSequenceParticipantStyleChange = useCallback(
+    (newStyle: NodeStyle) => {
+      const item = selectedSequence
+      if (!item || item.kind !== 'participant' || !item.participantId || !item.label) return
+      setSeqNodeStyle(newStyle)
+      const seq = nodeStyleToSeqStyle(newStyle)
+      rendererRef.current?.applySequenceParticipantStyleDirect(item.label, seq)
+      applySequenceSourceDebounced(updateSourceWithParticipantStyle(source, item.participantId, seq))
+    },
+    [selectedSequence, source, applySequenceSourceDebounced]
+  )
+
+  const handleSequenceMsgStyleChange = useCallback(
+    (newStyle: EdgeStyle) => {
+      const item = selectedSequence
+      if (!item || item.kind !== 'message' || item.messageIndex === undefined) return
+      setSeqMsgStyle(newStyle)
+      rendererRef.current?.applySequenceMsgStyleDirect(item.messageIndex, newStyle)
+      applySequenceSourceDebounced(updateSourceWithMsgStyle(source, item.messageIndex, newStyle))
+    },
+    [selectedSequence, source, applySequenceSourceDebounced]
+  )
+
+  const commitSeqRename = useCallback(() => {
+    if (!seqRename) return
+    const next = updateSourceWithParticipantAlias(source, seqRename.participantId, seqRename.value)
+    setSeqRename(null)
+    setSelectedSequence(null)
+    if (next !== source) {
+      setEditorState((prev) => ({ ...prev, source: next, hasChanges: true }))
+    }
+  }, [seqRename, source])
+
   // 关闭 Node 样式面板
   const handleNodePanelClose = useCallback(() => {
     // 先设置状态触发关闭动画
@@ -518,8 +625,12 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         theme={isDarkMode ? 'dark' : theme}
         className="diagram-editor-canvas absolute inset-0"
         showControls={true}
-        edgeSelectionEnabled={true}
-        nodeSelectionEnabled={true}
+        edgeSelectionEnabled={!isSequence}
+        nodeSelectionEnabled={!isSequence}
+        sequenceSelectionEnabled={isSequence}
+        onSequenceSelect={handleSequenceSelect}
+        onSequenceDoubleClick={handleSequenceDoubleClick}
+        resolveParticipantId={resolveParticipantId}
         diagramId={diagramId}
         onEdgeSelect={handleEdgeSelect}
         onNodeSelect={handleNodeSelect}
@@ -778,27 +889,61 @@ export function DiagramEditor({ diagramId, sidebarWidth = 0, sidebarAnimating = 
         </Button>
       )}
 
-      {/* Edge 样式编辑面板 */}
+      {/* Edge 样式编辑面板（消息线选中时复用） */}
       <EdgeStylePanel
-        open={selectedEdge !== null}
-        position={selectedEdge?.position || lastEdgePosition}
-        currentStyle={edgeStyle}
+        open={selectedEdge !== null || selectedSequence?.kind === 'message'}
+        position={
+          selectedEdge?.position ||
+          (selectedSequence?.kind === 'message' ? selectedSequence.position : lastEdgePosition)
+        }
+        currentStyle={selectedSequence?.kind === 'message' ? seqMsgStyle : edgeStyle}
         mermaidTheme={theme}
-        onStyleChange={handleEdgeStyleChange}
-        onClose={handleEdgePanelClose}
+        onStyleChange={(s) => {
+          if (selectedSequence?.kind === 'message') handleSequenceMsgStyleChange(s)
+          else handleEdgeStyleChange(s)
+        }}
+        onClose={() => {
+          handleEdgePanelClose()
+          setSelectedSequence(null)
+        }}
       />
 
-      {/* Node 样式编辑面板 */}
+      {/* Node 样式编辑面板（参与者选中时复用） */}
       <NodeStylePanel
-        open={selectedNode !== null && !isEditingNodeText}
-        position={selectedNode?.position || lastNodePosition}
-        currentStyle={nodeStyle}
-        currentShape={nodeShape}
+        open={(selectedNode !== null || selectedSequence?.kind === 'participant') && !isEditingNodeText}
+        position={
+          selectedNode?.position ||
+          (selectedSequence?.kind === 'participant' ? selectedSequence.position : lastNodePosition)
+        }
+        currentStyle={selectedSequence?.kind === 'participant' ? seqNodeStyle : nodeStyle}
+        currentShape={selectedSequence?.kind === 'participant' ? null : nodeShape}
         mermaidTheme={theme}
-        onStyleChange={handleNodeStyleChange}
+        onStyleChange={(s) => {
+          if (selectedSequence?.kind === 'participant') handleSequenceParticipantStyleChange(s as NodeStyle)
+          else handleNodeStyleChange(s)
+        }}
         onShapeChange={handleNodeShapeChange}
-        onClose={handleNodePanelClose}
+        onClose={() => {
+          handleNodePanelClose()
+          setSelectedSequence(null)
+        }}
       />
+
+      {/* 时序图参与者改名浮层 */}
+      {seqRename && (
+        <input
+          autoFocus
+          className="fixed z-50 rounded-md border bg-background px-2 py-1 text-sm shadow-lg"
+          style={{ left: seqRename.position.x + 8, top: seqRename.position.y + 8 }}
+          value={seqRename.value}
+          onChange={(e) => setSeqRename({ ...seqRename, value: e.target.value })}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitSeqRename()
+            if (e.key === 'Escape') setSeqRename(null)
+          }}
+          onBlur={commitSeqRename}
+        />
+      )}
 
       <MermaidDslHelpDialog open={dslHelpOpen} onOpenChange={setDslHelpOpen} />
     </div>

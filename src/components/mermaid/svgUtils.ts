@@ -168,7 +168,9 @@ export function getSubgraphIdFromElement(element: Element): string | null {
   const id = clusterGroup.getAttribute('id')
   if (!id) return null
 
-  return id
+  // mermaid 会给 cluster id 拼上渲染容器前缀（如 mermaid-render-<ts>-<rand>-SG1），
+  // 剥离后才能与源码中的 subgraph id 匹配，否则样式/改名写回全部失效
+  return id.replace(/^mermaid-(?:render|export)-\d+-[a-z0-9]+-/, '')
 }
 
 /**
