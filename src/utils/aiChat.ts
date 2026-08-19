@@ -224,6 +224,96 @@ export function extractMermaidCode(reply: string): string | null {
 }
 
 /**
+ * 「生成新图」模式的系统提示词：从零生成，不依赖当前代码。
+ */
+export function buildGenerateSystemPrompt(options: { withSkill: boolean }): string {
+  const lines: string[] = ['你是 Mermaid 图表平台内置的 AI 生成助手。']
+  if (options.withSkill) {
+    lines.push('', '下面是平台的自定义样式 Skill 文档，生成时必须遵守：', '', SKILL_MD.trim(), '')
+  }
+  lines.push(
+    '工作方式：',
+    '1. 按用户的描述从零生成一份完整的 Mermaid 图，不要依赖任何已有代码。',
+    '2. 将完整代码放在一个 ```mermaid 代码块中返回，代码块外只允许极简的说明。',
+    '3. 如无特殊说明，不要使用 blink 闪烁动画；需要强调时优先 pulse 或连线动画。'
+  )
+  return lines.join('\n')
+}
+
+// ─── 图生图（VL） ────────────────────────────────────────────────
+
+const VL_MODEL_KEY = 'ai-vl-model'
+const VL_PREFERRED = ['qwen3-vl-plus', 'qwen-vl-max-latest', 'qwen-vl-max', 'qwen2.5-vl-72b-instruct']
+
+/** 发现可用的视觉模型（缓存到 localStorage，失败回退偏好列表首项） */
+export async function discoverVisionModel(apiKey: string): Promise<string> {
+  const cached = localStorage.getItem(VL_MODEL_KEY)
+  if (cached) return cached
+  try {
+    const res = await fetch(`${AI_API_BASE}/models`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    if (res.ok) {
+      const data = (await res.json()) as { data?: Array<{ id: string }> }
+      const ids = (data.data ?? []).map((m) => m.id).filter((id) => /vl/i.test(id))
+      for (const pref of VL_PREFERRED) {
+        if (ids.includes(pref)) {
+          localStorage.setItem(VL_MODEL_KEY, pref)
+          return pref
+        }
+      }
+      if (ids.length > 0) {
+        localStorage.setItem(VL_MODEL_KEY, ids[0])
+        return ids[0]
+      }
+    }
+  } catch {
+    // 发现失败走默认
+  }
+  return VL_PREFERRED[0]
+}
+
+/** 视觉请求：图片 + 文本 → 模型回复（非流式） */
+export async function requestVisionCompletion(options: {
+  apiKey: string
+  model: string
+  imageDataUrl: string
+  prompt: string
+  signal?: AbortSignal
+}): Promise<string> {
+  const response = await fetch(`${AI_API_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${options.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: options.prompt },
+            { type: 'image_url', image_url: { url: options.imageDataUrl } },
+          ],
+        },
+      ],
+      temperature: 0.4,
+    }),
+    signal: options.signal,
+  })
+  if (!response.ok) {
+    throw new Error(`请求失败 (${response.status})`)
+  }
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>
+  }
+  const content = data.choices?.[0]?.message?.content ?? ''
+  if (!content.trim()) throw new Error('模型未返回有效内容')
+  return content
+}
+
+/**
  * 多轮上下文压缩：把滑出窗口的旧轮次（+ 已有摘要）压成 ≤150 字摘要。
  * 用 flash 模型、关思考，失败由调用方静默忽略。
  */

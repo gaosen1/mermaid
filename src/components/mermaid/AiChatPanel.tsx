@@ -5,14 +5,17 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  ImagePlus,
   KeyRound,
   Loader2,
   MessagesSquare,
   SendHorizontal,
   SquarePen,
   Trash2,
+  X,
 } from 'lucide-react'
 import { db } from '@/db'
+import { toast } from 'sonner'
 import type { AiChatSession, AiChatSessionMessage } from '@/types'
 import { Button } from '@/components/ui/button'
 import {
@@ -32,11 +35,14 @@ import { renderMarkdownToHtml } from '@/utils/markdown'
 import { ApiKeyDialog } from './ApiKeyDialog'
 import {
   AI_MODELS,
+  buildGenerateSystemPrompt,
   buildMarkdownSystemPrompt,
   buildSystemPrompt,
+  discoverVisionModel,
   getAiApiKey,
   getStoredAiModel,
   requestAiCompletion,
+  requestVisionCompletion,
   storeAiModel,
   summarizeSessionTurns,
   type AiMessage,
@@ -142,6 +148,11 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
   const [thinking, setThinking] = useState(() => localStorage.getItem('ai-chat-thinking') !== '0')
   const [withSkill, setWithSkill] = useState(() => localStorage.getItem('ai-chat-with-skill') !== '0')
+  // 「生成新图」模式（仅 mermaid）：按描述从零生成，不附带当前代码
+  const [genMode, setGenMode] = useState(() => localStorage.getItem('ai-chat-gen-mode') === '1')
+  // 图生图：附加的图片（dataURL）；会话持久化时仅存占位符
+  const [attachedImage, setAttachedImage] = useState<string | null>(null)
+  const attachFileRef = useRef<HTMLInputElement>(null)
   // 正在流式输出的 assistant 消息 id（用于实时渲染与推理块自动展开）
   const [streamingId, setStreamingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -216,6 +227,17 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
     if (!open) setHasKey(Boolean(getAiApiKey()))
   }
 
+  // 附加图片（限 4MB）→ dataURL，供图生图使用
+  const handleAttachFile = (file: File) => {
+    if (file.size > 4 * 1024 * 1024) {
+      toast.error('图片过大（限 4MB）')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => setAttachedImage(typeof reader.result === 'string' ? reader.result : null)
+    reader.readAsDataURL(file)
+  }
+
   const handleSend = async () => {
     if (loading) return
 
@@ -225,11 +247,26 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
       return
     }
 
-    const question = input.trim() || DEFAULT_QUESTIONS[mode]
-    const userItem: ChatItem = { id: uuid(), role: 'user', content: question }
+    const image = attachedImage
+    const typedQuestion = input.trim()
+    // 生成模式要求输入描述（附加图片时除外）；优化模式保留空输入快速发送
+    if (!image && mode === 'mermaid' && genMode && !typedQuestion) return
+    const question =
+      typedQuestion ||
+      (mode === 'mermaid' && genMode ? '' : DEFAULT_QUESTIONS[mode])
+    const userItem: ChatItem = {
+      id: uuid(),
+      role: 'user',
+      content: image
+        ? typedQuestion
+          ? `[图片] ${typedQuestion}`
+          : '[图片] 转换为遵守平台语法的 Mermaid 代码'
+        : question,
+    }
     const pendingItems = [...items, userItem]
     setItems(pendingItems)
     setInput('')
+    setAttachedImage(null)
     setLoading(true)
 
     // 首次发送才落库创建会话，避免空会话堆积
@@ -246,6 +283,44 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
       setActiveSessionId(session.id)
     }
     const targetSessionId = session.id
+
+    // 图生图（VL）：独立非流式请求，完成后走统一持久化
+    if (image) {
+      const visionItemId = uuid()
+      stickToBottomRef.current = true
+      setItems([...pendingItems, { id: visionItemId, role: 'assistant', content: '' }])
+      setStreamingId(visionItemId)
+      let visionItems: ChatItem[]
+      try {
+        const vlModel = await discoverVisionModel(apiKey)
+        const reply = await requestVisionCompletion({
+          apiKey,
+          model: vlModel,
+          imageDataUrl: image,
+          prompt:
+            typedQuestion ||
+            '把这张图转换为遵守平台语法的 Mermaid 代码，返回完整代码。',
+        })
+        visionItems = [...pendingItems, { id: visionItemId, role: 'assistant', content: reply }]
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '请求失败'
+        visionItems = [
+          ...pendingItems,
+          { id: visionItemId, role: 'assistant', content: message, error: true },
+        ]
+      }
+      setStreamingId(null)
+      const visionSession: AiChatSession = {
+        ...session,
+        updatedAt: Date.now(),
+        messages: visionItems,
+      }
+      await db.aiChats.put(visionSession)
+      setSessions((prev) => [...prev.filter((s) => s.id !== targetSessionId), visionSession])
+      if (activeSessionIdRef.current === targetSessionId) setItems(visionItems)
+      setLoading(false)
+      return
+    }
 
     // 多轮上下文：system（Skill + 当前代码 + 旧摘要）+ 最近 4 轮成功对话（assistant 截断）+ 本次提问
     const successful = pendingItems.filter((item) => !item.error && item.id !== userItem.id)
@@ -270,7 +345,9 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
         content:
           (mode === 'markdown'
             ? buildMarkdownSystemPrompt(source, { withSkill })
-            : buildSystemPrompt(source, { withSkill })) +
+            : genMode
+              ? buildGenerateSystemPrompt({ withSkill })
+              : buildSystemPrompt(source, { withSkill })) +
           (sessionSummary ? `\n\n此前会话摘要：${sessionSummary}` : ''),
       },
       ...history,
@@ -494,6 +571,19 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
             />
             样式 Skill
           </label>
+          {mode === 'mermaid' && (
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer" title="按描述从零生成新图（不附带当前代码）">
+              <Switch
+                checked={genMode}
+                onCheckedChange={(v) => {
+                  setGenMode(v)
+                  localStorage.setItem('ai-chat-gen-mode', v ? '1' : '0')
+                }}
+                className="scale-75 data-[state=checked]:bg-primary"
+              />
+              生成新图
+            </label>
+          )}
         </div>
         <Select
           value={model}
@@ -514,10 +604,27 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
           </SelectContent>
         </Select>
 
+        {attachedImage && (
+          <div className="flex items-center gap-1.5">
+            <img src={attachedImage} alt="附加图片" className="h-10 w-10 rounded border object-cover" />
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px]" onClick={() => setAttachedImage(null)}>
+              <X className="h-3 w-3 mr-1" />
+              移除
+            </Button>
+          </div>
+        )}
+
         <div className="flex items-end gap-1.5">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'))
+              if (file) {
+                e.preventDefault()
+                handleAttachFile(file)
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -525,10 +632,41 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
               }
             }}
             rows={2}
-            placeholder="输入优化要求，留空发送则自动优化"
+            placeholder={
+              mode === 'mermaid' && genMode
+                ? '描述你想要的图…'
+                : '输入优化要求，留空发送则自动优化'
+            }
             className="flex-1 resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
-          <Button size="sm" className="h-8 w-8 p-0" onClick={handleSend} disabled={loading} title="发送">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 w-8 p-0"
+            title="附加图片（图生图）"
+            disabled={loading || mode !== 'mermaid'}
+            onClick={() => attachFileRef.current?.click()}
+          >
+            <ImagePlus className="h-4 w-4" />
+          </Button>
+          <input
+            ref={attachFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleAttachFile(file)
+              e.target.value = ''
+            }}
+          />
+          <Button
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={handleSend}
+            disabled={loading || (mode === 'mermaid' && genMode && !input.trim() && !attachedImage)}
+            title="发送"
+          >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
           </Button>
         </div>
