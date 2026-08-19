@@ -38,6 +38,7 @@ import {
   getStoredAiModel,
   requestAiCompletion,
   storeAiModel,
+  summarizeSessionTurns,
   type AiMessage,
 } from '@/utils/aiChat'
 
@@ -246,23 +247,43 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
     }
     const targetSessionId = session.id
 
-    // 最小上下文：system（Skill + 当前代码）+ 最近一轮成功对话 + 本次提问
-    const history = pendingItems
-      .filter((item) => !item.error && item.id !== userItem.id)
-      .slice(-2)
-      .map((item) => ({ role: item.role, content: item.content }) as AiMessage)
+    // 多轮上下文：system（Skill + 当前代码 + 旧摘要）+ 最近 4 轮成功对话（assistant 截断）+ 本次提问
+    const successful = pendingItems.filter((item) => !item.error && item.id !== userItem.id)
+    const history = successful
+      .slice(-8)
+      .map(
+        (item) =>
+          ({
+            role: item.role,
+            content:
+              item.role === 'assistant' && item.content.length > 1200
+                ? `${item.content.slice(0, 1200)}…(已截断)`
+                : item.content,
+          }) as AiMessage
+      )
+    const sessionSummary = session.summary ?? ''
+    let compressAfterReply: Array<{ role: string; content: string }> | null = null
 
     const messages: AiMessage[] = [
       {
         role: 'system',
         content:
-          mode === 'markdown'
+          (mode === 'markdown'
             ? buildMarkdownSystemPrompt(source, { withSkill })
-            : buildSystemPrompt(source, { withSkill }),
+            : buildSystemPrompt(source, { withSkill })) +
+          (sessionSummary ? `\n\n此前会话摘要：${sessionSummary}` : ''),
       },
       ...history,
       { role: 'user', content: question },
     ]
+
+    // 超 6 轮时异步把滑出窗口的旧轮次压缩为会话摘要（不阻塞发送，失败静默）
+    if (successful.length > 12) {
+      // 记录待压缩的旧轮次，主请求完成后再异步压缩（避免与主 SSE 并发占用通道）
+      compressAfterReply = successful
+        .slice(0, successful.length - 8)
+        .map((i) => ({ role: i.role, content: i.content }))
+    }
 
     let finalItems: ChatItem[]
     const streamItemId = uuid()
@@ -311,6 +332,21 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
       setItems(finalItems)
     }
     setLoading(false)
+
+    // 主请求完成后异步压缩旧轮次为会话摘要（失败静默）
+    if (compressAfterReply) {
+      summarizeSessionTurns({
+        apiKey,
+        previousSummary: sessionSummary,
+        turns: compressAfterReply,
+      })
+        .then((summary) => {
+          if (!summary) return
+          void db.aiChats.update(targetSessionId, { summary })
+          setSessions((prev) => prev.map((s) => (s.id === targetSessionId ? { ...s, summary } : s)))
+        })
+        .catch(() => undefined)
+    }
   }
 
   return (

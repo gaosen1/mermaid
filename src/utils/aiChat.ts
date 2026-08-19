@@ -222,3 +222,32 @@ export function extractMermaidCode(reply: string): string | null {
   const anyMatch = reply.match(/```[^\n]*\n([\s\S]*?)```/)
   return anyMatch ? anyMatch[1].trim() : null
 }
+
+/**
+ * 多轮上下文压缩：把滑出窗口的旧轮次（+ 已有摘要）压成 ≤150 字摘要。
+ * 用 flash 模型、关思考，失败由调用方静默忽略。
+ */
+export async function summarizeSessionTurns(options: {
+  apiKey: string
+  previousSummary: string
+  turns: Array<{ role: string; content: string }>
+}): Promise<string> {
+  const body = [
+    options.previousSummary ? `已有摘要：${options.previousSummary}\n` : '',
+    '对话内容：',
+    ...options.turns.map((t) => `${t.role === 'user' ? '用户' : 'AI'}：${t.content.slice(0, 300)}`),
+  ].join('\n')
+  const result = await requestAiCompletion({
+    apiKey: options.apiKey,
+    model: 'qwen3.7-flash',
+    thinking: false,
+    messages: [
+      {
+        role: 'system',
+        content: '你是对话摘要器。用不超过150字概括下列对话的要点与结论，直接输出摘要文本。',
+      },
+      { role: 'user', content: body },
+    ],
+  })
+  return result.content.trim()
+}

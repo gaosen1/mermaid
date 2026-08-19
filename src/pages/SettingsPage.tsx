@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { useSyncStore } from '@/stores/syncStore'
 import { getWheelMode, setWheelMode, type WheelMode } from '@/utils/canvasGesture'
@@ -26,12 +26,21 @@ import {
 } from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { exportBackup, parseBackup, importBackup, type BackupFile } from '@/utils/backup'
+import {
   GitHubLoginDialog,
   SyncStatusPanel,
   SyncSettingsPanel,
   SyncQueuePanel,
 } from '@/components/sync'
-import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug } from 'lucide-react'
+import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug, Download, Upload } from 'lucide-react'
 import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
@@ -345,6 +354,21 @@ export function SettingsPage() {
 
         <Card>
           <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              备份与恢复
+            </CardTitle>
+            <CardDescription>
+              一键导出全部数据（项目/图表/文件夹/快照/设置/AI 会话）为 JSON；恢复后可重新授权 Agent 同步目录
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BackupCard />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>可视化编辑器</CardTitle>
             <CardDescription>拖拽式图表编辑功能</CardDescription>
           </CardHeader>
@@ -495,6 +519,103 @@ function AgentSyncCard() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+// ─── 备份与恢复卡片 ──────────────────────────────────────────────
+
+function BackupCard() {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [pendingFile, setPendingFile] = useState<BackupFile | null>(null)
+  const [strategy, setStrategy] = useState<'replace' | 'merge'>('merge')
+  const [importing, setImporting] = useState(false)
+
+  const handleExport = async () => {
+    try {
+      await exportBackup()
+      toast.success('备份文件已导出')
+    } catch (err) {
+      toast.error('导出失败：' + (err instanceof Error ? err.message : String(err)))
+    }
+  }
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      setPendingFile(parseBackup(await file.text()))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err))
+    }
+    e.target.value = ''
+  }
+
+  const confirmImport = async () => {
+    if (!pendingFile) return
+    setImporting(true)
+    try {
+      await importBackup(pendingFile, strategy)
+      toast.success('导入完成，正在重载…')
+      setTimeout(() => window.location.reload(), 800)
+    } catch (err) {
+      toast.error('导入失败：' + (err instanceof Error ? err.message : String(err)))
+      setImporting(false)
+    }
+  }
+
+  const counts = pendingFile
+    ? `${pendingFile.tables.projects?.length ?? 0} 个项目 / ${pendingFile.tables.diagrams?.length ?? 0} 篇图表 / ${pendingFile.tables.aiChats?.length ?? 0} 个 AI 会话`
+    : ''
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <Button variant="outline" onClick={handleExport}>
+          <Download className="h-4 w-4 mr-1" />
+          导出备份
+        </Button>
+        <Button variant="outline" onClick={() => fileRef.current?.click()}>
+          <Upload className="h-4 w-4 mr-1" />
+          导入备份
+        </Button>
+        <input ref={fileRef} type="file" accept=".json" className="hidden" onChange={handleFile} />
+      </div>
+      <p className="text-xs text-muted-foreground">
+        备份不含 Agent 同步目录授权；恢复后如需继续使用 Agent 同步，请在「本地 Agent 同步」卡片重新选择目录。
+      </p>
+
+      <Dialog open={Boolean(pendingFile)} onOpenChange={(open) => !open && setPendingFile(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>恢复备份</DialogTitle>
+            <DialogDescription>{counts}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-4">
+            <Label>恢复策略</Label>
+            <Select
+              value={strategy}
+              onValueChange={(v) => setStrategy(v as 'replace' | 'merge')}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="merge">按 id 合并（新者胜）</SelectItem>
+                <SelectItem value="replace">整体覆盖（清空现有数据）</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingFile(null)}>
+              取消
+            </Button>
+            <Button onClick={confirmImport} disabled={importing}>
+              {importing ? '恢复中…' : '确认恢复'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

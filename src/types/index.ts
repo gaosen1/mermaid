@@ -132,6 +132,8 @@ export interface AiChatSession {
   createdAt: number
   updatedAt: number
   messages: AiChatSessionMessage[]
+  /** 超出滑动窗口的旧轮次压缩摘要（多轮上下文用） */
+  summary?: string
 }
 
 export interface GraphModel {
