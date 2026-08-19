@@ -967,6 +967,7 @@ function buildDiagramMeta(diagram: Diagram) {
     createdAt: new Date(diagram.createdAt).toISOString(),
     updatedAt: new Date(diagram.updatedAt).toISOString(),
     config: diagram.config || {},
+    tags: diagram.tags ?? [],
   }
 }
 
@@ -985,7 +986,7 @@ meta:
   folderId: ${meta.folderId}
   createdAt: ${meta.createdAt}
   updatedAt: ${meta.updatedAt}
-config: ${JSON.stringify(diagram.config || {})}
+${(meta.tags ?? []).length > 0 ? `tags: ${meta.tags.join(',')}\n` : ''}config: ${JSON.stringify(diagram.config || {})}
 ---
 ${diagram.source}`
 }
@@ -1012,6 +1013,12 @@ function parseDiagramFile(
       type,
       source,
       config: meta.config ? safeJsonParse(meta.config) : undefined,
+      tags: meta.tags
+        ? String(meta.tags)
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        : undefined,
       folderId: meta.folderId !== undefined
         ? (meta.folderId === 'null' ? null : meta.folderId)
         : undefined,

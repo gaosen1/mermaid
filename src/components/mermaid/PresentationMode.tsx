@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MermaidRenderer } from './MermaidRenderer'
+import { MermaidRenderer, type MermaidRendererRef } from './MermaidRenderer'
 import { MermaidBlock } from '@/components/markdown/MermaidBlock'
 import { renderMarkdown, splitMermaidSegments } from '@/utils/markdown'
 import { useSettingsStore } from '@/stores/settingsStore'
@@ -23,6 +23,7 @@ export function PresentationMode({ open, onOpenChange, diagrams, startIndex }: P
   const [index, setIndex] = useState(startIndex)
   const [chromeVisible, setChromeVisible] = useState(true)
   const hideTimerRef = useRef<number | null>(null)
+  const mermaidRef = useRef<MermaidRendererRef>(null)
   const { settings } = useSettingsStore()
 
   useEffect(() => {
@@ -39,6 +40,8 @@ export function PresentationMode({ open, onOpenChange, diagrams, startIndex }: P
         setIndex((i) => Math.min(i + 1, diagrams.length - 1))
       } else if (e.key === 'ArrowLeft') {
         setIndex((i) => Math.max(i - 1, 0))
+      } else if (e.key === 'f' || e.key === 'F') {
+        mermaidRef.current?.fitToContainer()
       }
     }
     window.addEventListener('keydown', onKey)
@@ -71,7 +74,7 @@ export function PresentationMode({ open, onOpenChange, diagrams, startIndex }: P
       onMouseMove={poke}
     >
       <div className="flex-1 min-h-0 flex items-center justify-center p-8">
-        <Slide diagram={diagram} theme={theme} layout={layout} />
+        <Slide diagram={diagram} theme={theme} layout={layout} mermaidRef={mermaidRef} />
       </div>
       {chromeVisible && (
         <div className="shrink-0 flex items-center justify-center gap-3 pb-4 text-sm text-muted-foreground">
@@ -90,16 +93,24 @@ function Slide({
   diagram,
   theme,
   layout,
+  mermaidRef,
 }: {
   diagram: Diagram
   theme: SlideTheme
   layout: LayoutType
+  mermaidRef: React.RefObject<MermaidRendererRef | null>
 }) {
   switch (diagram.type) {
     case 'mermaid':
       return (
         <div className="w-full h-full">
-          <MermaidRenderer source={diagram.source} theme={theme} layout={layout} showControls={false} />
+          <MermaidRenderer
+            ref={mermaidRef}
+            source={diagram.source}
+            theme={theme}
+            layout={layout}
+            showControls={false}
+          />
         </div>
       )
     case 'markdown': {

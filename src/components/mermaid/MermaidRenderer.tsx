@@ -68,6 +68,7 @@ export interface MermaidRendererRef {
   getSvgElement: () => SVGSVGElement | null
   markStyleOnlySource: (source: string) => void
   getScale: () => number
+  fitToContainer: () => void
 }
 
 interface MermaidRendererProps {
@@ -458,12 +459,13 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           return applySequenceParticipantStyle(svg, label, style)
         },
         getSvgElement: () => containerRef.current?.querySelector('svg') as SVGSVGElement | null,
+        fitToContainer,
         markStyleOnlySource: (newSource: string) => {
           styleOnlySourceRef.current = newSource
         },
         getScale: () => scale,
       }),
-      [handleExportPng, handleExportJpg, handleExportSvg, renderExportSource, resetView, restoreEdgeSelection, clearEdgeSelection, restoreNodeSelection, clearNodeSelection, scale]
+      [handleExportPng, handleExportJpg, handleExportSvg, renderExportSource, resetView, fitToContainer, restoreEdgeSelection, clearEdgeSelection, restoreNodeSelection, clearNodeSelection, scale]
     )
 
     return (

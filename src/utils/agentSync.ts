@@ -128,12 +128,13 @@ const INBOX_TYPES = ['mermaid', 'markdown', 'txt']
  * 扫描同步目录下的 inbox/：REST API POST /api/diagrams 写入的待导入笔记。
  * 成功导入后删除 inbox 文件；失败保留并在控制台告警。
  */
-async function ingestInbox(handle: FileSystemDirectoryHandle): Promise<void> {
+async function ingestInbox(handle: FileSystemDirectoryHandle): Promise<string[]> {
+  const warnings: string[] = []
   let inboxDir: FileSystemDirectoryHandle
   try {
     inboxDir = await handle.getDirectoryHandle('inbox')
   } catch {
-    return
+    return warnings
   }
   const entries: Array<[string, FileSystemHandle]> = []
   for await (const [name, h] of (
@@ -189,12 +190,15 @@ async function ingestInbox(handle: FileSystemDirectoryHandle): Promise<void> {
       ).removeEntry(name)
       ingested++
     } catch (err) {
-      console.warn(`[agent-sync] inbox 导入失败 ${name}:`, err instanceof Error ? err.message : err)
+      const message = err instanceof Error ? err.message : String(err)
+      warnings.push(`${name}: ${message}`)
+      console.warn(`[agent-sync] inbox 导入失败 ${name}:`, message)
     }
   }
   if (ingested > 0) {
     window.dispatchEvent(new CustomEvent(AGENT_SYNC_INGESTED_EVENT))
   }
+  return warnings
 }
 
 /** 应用启动时调用：恢复句柄；权限仍在则立即同步 */
@@ -379,7 +383,7 @@ export async function syncNow(): Promise<void> {
 
   setStatus({ syncing: true, lastError: null })
   try {
-    await ingestInbox(handle)
+    const inboxWarnings = await ingestInbox(handle)
     const [projects, diagrams, folders] = await Promise.all([
       db.projects.toArray(),
       db.diagrams.toArray(),
@@ -471,7 +475,17 @@ export async function syncNow(): Promise<void> {
     await writeRel(
       handle,
       'manifest.json',
-      JSON.stringify({ app: 'mermaid-local', version: 1, syncedAt: now, count: entries.length }, null, 2)
+      JSON.stringify(
+        {
+          app: 'mermaid-local',
+          version: 1,
+          syncedAt: now,
+          count: entries.length,
+          ...(inboxWarnings.length > 0 ? { warnings: inboxWarnings } : {}),
+        },
+        null,
+        2
+      )
     )
     setStatus({ syncing: false, lastSyncAt: now })
   } catch (err) {

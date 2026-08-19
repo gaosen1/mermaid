@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { initMermaid, renderMermaid } from '@/utils/mermaid'
 import { parseExtendedDSL, generateAnimationCSS, injectStyles, parseFrontmatter } from '@/utils/dsl'
 import { parseAllEdgeStylesFromSource } from '@/utils/edgeDsl'
-import { applyEdgeStyle } from '@/components/mermaid/svgStyleApplier'
+import { parseSequenceMsgStyles, parseSequenceParticipants, msgCssToEdgeStyle } from '@/utils/sequenceDsl'
+import { applyEdgeStyle, applySequenceMsgStyle, applySequenceParticipantStyle } from '@/components/mermaid/svgStyleApplier'
 import { cleanupMermaidErrors } from '@/components/mermaid/svgUtils'
 import type { LayoutType } from '@/types'
 
@@ -83,6 +84,13 @@ async function renderMermaidBlockHtml(
     const leaderStyles = parseAllEdgeStylesFromSource(source)
     for (const { index, style } of leaderStyles) {
       applyEdgeStyle(svgEl, index, style)
+    }
+    // 时序图 DSL 样式（参与者 / 消息线）
+    for (const { index, css } of parseSequenceMsgStyles(content)) {
+      applySequenceMsgStyle(svgEl, index, msgCssToEdgeStyle(css))
+    }
+    for (const p of parseSequenceParticipants(content)) {
+      if (p.style) applySequenceParticipantStyle(svgEl, p.alias ?? p.id, p.style)
     }
   }
 

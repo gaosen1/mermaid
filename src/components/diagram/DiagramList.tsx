@@ -157,9 +157,11 @@ function DiagramThumb({ diagram }: { diagram: Diagram }) {
   useEffect(() => {
     const el = ref.current
     if (!el) return
+    let done = false
     const obs = new IntersectionObserver(
       (entries) => {
         if (entries.some((e) => e.isIntersecting)) {
+          done = true
           setVisible(true)
           obs.disconnect()
         }
@@ -167,7 +169,21 @@ function DiagramThumb({ diagram }: { diagram: Diagram }) {
       { rootMargin: '100px' }
     )
     obs.observe(el)
-    return () => obs.disconnect()
+    // 兜底：无渲染帧的环境（如 headless）IO 可能不回调，
+    // 1.5s 后用视口 rect 判断可见性补触发
+    const timer = window.setTimeout(() => {
+      if (done) return
+      const r = el.getBoundingClientRect()
+      if (r.bottom > -100 && r.top < (window.innerHeight || 0) + 100) {
+        done = true
+        setVisible(true)
+        obs.disconnect()
+      }
+    }, 1500)
+    return () => {
+      obs.disconnect()
+      window.clearTimeout(timer)
+    }
   }, [])
 
   useEffect(() => {

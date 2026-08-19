@@ -81,6 +81,17 @@ export function parseSequenceMsgStyles(source: string): SequenceMsgStyle[] {
   return result
 }
 
+/** 一次性解析参与者样式与消息样式（对照 edgeDsl 的 parseAllEdgeStylesFromSource） */
+export function parseSequenceStylesFromSource(source: string): {
+  participants: SequenceParticipant[]
+  msgStyles: SequenceMsgStyle[]
+} {
+  return {
+    participants: parseSequenceParticipants(source),
+    msgStyles: parseSequenceMsgStyles(source),
+  }
+}
+
 /** msgStyle 的 css 串 → EdgeStyle（复用 EdgeStylePanel / applyEdgeStyleToElement） */
 export function msgCssToEdgeStyle(css: string): EdgeStyle {
   const style: EdgeStyle = {}
