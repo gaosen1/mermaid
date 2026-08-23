@@ -67,8 +67,8 @@ export function ApiKeyDialog({ open, onOpenChange }: ApiKeyDialogProps) {
     const p = profiles[id]
     if (!p.apiKey.trim() || !p.baseUrl.trim()) return
     setTest((prev) => ({ ...prev, [id]: { status: 'testing', message: '测试中…' } }))
-    // flash 模型消耗最小，仅用于探测端点与 Key
-    const result = await testAiConnection(p.baseUrl.trim(), p.apiKey.trim(), 'qwen3.7-flash')
+    // 用 models 接口探测（轻量，同时验证 Key 与端点）
+    const result = await testAiConnection(p.baseUrl.trim(), p.apiKey.trim())
     // 直连被 CORS 拦截但代理连通：自动开启本地代理转发
     if (result.viaProxy) {
       setProfiles((prev) => ({ ...prev, [id]: { ...prev[id], useProxy: true } }))

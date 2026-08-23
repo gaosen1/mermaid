@@ -41,11 +41,13 @@ import {
   discoverVisionModel,
   getAiApiKey,
   getStoredAiModel,
+  loadAvailableModels,
   requestAiCompletion,
   requestVisionCompletion,
   storeAiModel,
   summarizeSessionTurns,
   type AiMessage,
+  type AiModelOption,
 } from '@/utils/aiChat'
 
 // 输入框留空时自动发送的默认提问
@@ -142,6 +144,8 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
   const [items, setItems] = useState<ChatItem[]>([])
   const [input, setInput] = useState('')
   const [model, setModel] = useState(getStoredAiModel)
+  // 当前激活端点可用的模型（不同套餐模型集不同，动态拉取）
+  const [modelOptions, setModelOptions] = useState<AiModelOption[]>(AI_MODELS)
   const [loading, setLoading] = useState(false)
   const [hasKey, setHasKey] = useState(() => Boolean(getAiApiKey()))
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
@@ -221,9 +225,24 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
     }
   }
 
-  // 配置变更（设置页保存）或窗口重新聚焦后刷新 Key 状态
+  // 配置变更（设置页保存）或窗口重新聚焦后刷新 Key 状态与可用模型列表
   useEffect(() => {
-    const refresh = () => setHasKey(Boolean(getAiApiKey()))
+    const refresh = () => {
+      setHasKey(Boolean(getAiApiKey()))
+      // 不同端点的模型集不同，强制重拉；当前模型不在列表内则切到首个
+      loadAvailableModels(true).then((options) => {
+        setModelOptions(options)
+        setModel((current) => {
+          if (!options.some((o) => o.id === current)) {
+            const next = options[0]?.id ?? AI_MODELS[0].id
+            storeAiModel(next)
+            return next
+          }
+          return current
+        })
+      })
+    }
+    refresh()
     window.addEventListener('focus', refresh)
     window.addEventListener(AI_PROFILES_CHANGED_EVENT, refresh)
     return () => {
@@ -605,7 +624,7 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
             <SelectValue placeholder="模型" />
           </SelectTrigger>
           <SelectContent>
-            {AI_MODELS.map((option) => (
+            {modelOptions.map((option) => (
               <SelectItem key={option.id} value={option.id} className="text-xs">
                 {option.label}
               </SelectItem>

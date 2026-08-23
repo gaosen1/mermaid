@@ -21,11 +21,11 @@ export function getAiProxyBase(): string {
 /** 本地 Agent API 服务默认端口（与 scripts/agent-api.mjs 保持一致） */
 export const AGENT_API_DEFAULT_PORT = 4789
 
-/** 各方案的默认端点 */
+/** 各方案的默认端点（Token 套餐走 dev server 同源代理，见 vite.config.ts） */
 export const AI_PROFILE_PRESETS: Record<AiProfileId, { name: string; baseUrl: string }> = {
   'token-plan': {
     name: 'Token 套餐（订阅）',
-    baseUrl: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+    baseUrl: '/token-plan-api/compatible-mode/v1',
   },
   'api-payg': {
     name: 'API 按量付费',
@@ -33,8 +33,11 @@ export const AI_PROFILE_PRESETS: Record<AiProfileId, { name: string; baseUrl: st
   },
 }
 
-/** 旧版预填错误的 Token 套餐端点，保存过该值的配置自动迁移到正确地址 */
-const LEGACY_TOKEN_PLAN_BASE = 'https://coding.dashscope.aliyuncs.com/v1'
+/** 历史版本的 Token 套餐端点写法，保存过这些值的配置自动迁移到同源代理路径 */
+const LEGACY_TOKEN_PLAN_BASES = [
+  'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+  'https://coding.dashscope.aliyuncs.com/v1',
+]
 
 /** 按量付费端点（兼容旧引用） */
 export const AI_API_BASE = AI_PROFILE_PRESETS['api-payg'].baseUrl
@@ -73,9 +76,10 @@ export function getAiProfiles(): Record<AiProfileId, AiEndpointProfile> {
   } catch {
     // 解析失败走默认
   }
-  // 旧版错误预填端点迁移
-  if (profiles['token-plan'].baseUrl === LEGACY_TOKEN_PLAN_BASE) {
+  // 历史 Token 套餐端点写法 → 同源代理路径（迁移后不再需要本地脚本）
+  if (LEGACY_TOKEN_PLAN_BASES.includes(profiles['token-plan'].baseUrl)) {
     profiles['token-plan'].baseUrl = AI_PROFILE_PRESETS['token-plan'].baseUrl
+    profiles['token-plan'].useProxy = false
     saveAiProfiles(profiles)
   }
   // 旧版单 key 迁移（迁移后删除旧键，避免两处不一致）
@@ -143,58 +147,45 @@ export function clearAiApiKey(): void {
   setAiApiKey('')
 }
 
-/** 连接测试：最小 chat 请求探测端点 + Key 是否可用；target 非空时经本地代理转发 */
-async function probeEndpoint(options: {
-  baseUrl: string
-  apiKey: string
-  model: string
-  target?: string
-}): Promise<{ ok: boolean; message: string }> {
-  const { baseUrl, apiKey, model, target } = options
-  try {
-    const viaProxy = Boolean(target)
-    const base = viaProxy ? getAiProxyBase() : baseUrl
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    }
-    if (viaProxy) headers['X-Target-Base'] = target!.replace(/\/+$/, '')
-    const res = await fetch(`${base.replace(/\/+$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: 'reply OK' }],
-        max_tokens: 2,
-        enable_thinking: false,
-      }),
-    })
-    if (res.ok) return { ok: true, message: '连接成功' }
-    const data: unknown = await res.json().catch(() => null)
-    const msg = (data as { error?: { message?: string } } | null)?.error?.message
-    return { ok: false, message: msg || `请求失败（${res.status}）` }
-  } catch (err) {
-    return { ok: false, message: err instanceof Error ? err.message : '网络错误' }
-  }
-}
-
 /**
  * 连接测试（带代理兑底）：先直连；失败且疑似 CORS（fetch 层错误）时
  * 自动尝试本地 agent-api 的 /api/ai-proxy 转发（目标仍为该端点）。
+ * 探测用 models 接口（比 chat 更轻量），同时验证 Key 与端点。
  */
-export async function testAiConnection(baseUrl: string, apiKey: string, model: string): Promise<{ ok: boolean; message: string; viaProxy?: boolean }> {
-  const direct = await probeEndpoint({ baseUrl, apiKey, model })
-  if (direct.ok) return direct
+export async function testAiConnection(baseUrl: string, apiKey: string): Promise<{ ok: boolean; message: string; viaProxy?: boolean }> {
+  // 先用 models 接口探测（比 chat 更轻量），同时拿到可用模型
+  const probeModels = async (target?: string) => {
+    try {
+      const viaProxy = Boolean(target)
+      const base = viaProxy ? getAiProxyBase() : baseUrl
+      const headers: Record<string, string> = { Authorization: `Bearer ${apiKey}` }
+      if (viaProxy) headers['X-Target-Base'] = target!.replace(/\/+$/, '')
+      const res = await fetch(`${base.replace(/\/+$/, '')}/models`, { headers })
+      if (!res.ok) {
+        const data: unknown = await res.json().catch(() => null)
+        const msg = (data as { error?: { message?: string } } | null)?.error?.message
+        return { ok: false as const, message: msg || `请求失败（${res.status}）` }
+      }
+      const data = (await res.json()) as { data?: Array<{ id: string }> }
+      const ids = (data.data ?? []).map((m) => m.id).filter(Boolean)
+      return { ok: true as const, message: `连接成功（可用模型 ${ids.length} 个）`, model: ids[0] ?? 'qwen3.7-flash' }
+    } catch (err) {
+      return { ok: false as const, message: err instanceof Error ? err.message : '网络错误' }
+    }
+  }
+
+  const direct = await probeModels()
+  if (direct.ok) return { ok: true, message: direct.message }
 
   // fetch 层错误（Failed to fetch / TypeError）多为 CORS/网络拦截，尝试代理
   const isFetchLevelError = /fetch|network|cors/i.test(direct.message)
   if (isFetchLevelError) {
-    const proxied = await probeEndpoint({ baseUrl, apiKey, model, target: baseUrl })
+    const proxied = await probeModels(baseUrl)
     if (proxied.ok) {
       return {
         ok: true,
         viaProxy: true,
-        message: `该端点不支持浏览器跨域（CORS），已通过本地代理连通。已自动启用「本地代理转发」，保存即可（需保持 node scripts/agent-api.mjs 运行）。`,
+        message: `该端点不支持浏览器跨域（CORS），已通过本地代理连通。已自动启用「本地代理转发」，保存即可（需保持 node scripts/agent-api.mjs 运行）。${proxied.message}`,
       }
     }
     return {
@@ -202,7 +193,7 @@ export async function testAiConnection(baseUrl: string, apiKey: string, model: s
       message: `直连失败（端点可能不支持跨域）：${direct.message}；本地代理也不可用：${proxied.message}（请先运行 node scripts/agent-api.mjs）`,
     }
   }
-  return direct
+  return { ok: false, message: direct.message }
 }
 
 export interface AiModelOption {
@@ -225,6 +216,65 @@ export function getStoredAiModel(): string {
 
 export function storeAiModel(id: string): void {
   localStorage.setItem(AI_MODEL_STORAGE, id)
+}
+
+// ─── 当前端点可用的模型列表（不同套餐的模型集不同） ──────────────────
+
+const AVAILABLE_MODELS_KEY = 'ai-available-models'
+
+interface AvailableModelsCache {
+  base: string
+  ids: string[]
+}
+
+/**
+ * 拉取当前激活端点的可用模型列表（缓存到 localStorage，按端点失效）。
+ * 标签优先用内置 AI_MODELS，端点独有的模型直接用 id。
+ */
+export async function loadAvailableModels(force = false): Promise<AiModelOption[]> {
+  const base = getAiApiBase()
+  if (!force) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(AVAILABLE_MODELS_KEY) ?? 'null') as AvailableModelsCache | null
+      if (cached && cached.base === base && Array.isArray(cached.ids) && cached.ids.length > 0) {
+        return toModelOptions(cached.ids)
+      }
+    } catch {
+      // 缓存损坏重新拉
+    }
+  }
+  try {
+    const { url, headers: baseHeaders } = buildAiRequest('models')
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${getAiApiKey()}`, ...baseHeaders } })
+    if (res.ok) {
+      const data = (await res.json()) as { data?: Array<{ id: string }> }
+      const ids = (data.data ?? []).map((m) => m.id).filter(Boolean)
+      if (ids.length > 0) {
+        localStorage.setItem(AVAILABLE_MODELS_KEY, JSON.stringify({ base, ids }))
+        return toModelOptions(ids)
+      }
+    }
+  } catch {
+    // 拉取失败走内置列表
+  }
+  return AI_MODELS
+}
+
+function toModelOptions(ids: string[]): AiModelOption[] {
+  return ids.map((id) => ({ id, label: AI_MODELS.find((m) => m.id === id)?.label ?? id }))
+}
+
+/** 选择当前端点上可用的轻量模型（摘要等内部任务用）；优先 flash 系 */
+export async function pickLightModel(): Promise<string> {
+  try {
+    const options = await loadAvailableModels()
+    const flash = options.find((o) => /flash/i.test(o.id))
+    if (flash) return flash.id
+    if (options.length > 0) return options[options.length - 1].id
+  } catch {
+    // 忽略
+  }
+  return 'qwen3.7-flash'
 }
 
 export interface AiMessage {
@@ -521,7 +571,7 @@ export async function summarizeSessionTurns(options: {
   ].join('\n')
   const result = await requestAiCompletion({
     apiKey: options.apiKey,
-    model: 'qwen3.7-flash',
+    model: await pickLightModel(),
     thinking: false,
     messages: [
       {
