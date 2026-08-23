@@ -623,7 +623,9 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
           <SelectTrigger className="h-7 w-full text-xs">
             <SelectValue placeholder="模型" />
           </SelectTrigger>
-          <SelectContent>
+          {/* popper 定位：面板底部受限空间下 item-aligned 会吃掉滚动范围，
+              popper 模式按可用空间开合并支持正常滚轮滚动 */}
+          <SelectContent position="popper" side="top" align="start" sideOffset={4} className="max-h-64">
             {modelOptions.map((option) => (
               <SelectItem key={option.id} value={option.id} className="text-xs">
                 {option.label}
