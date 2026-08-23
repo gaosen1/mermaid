@@ -46,13 +46,34 @@ import {
   SyncSettingsPanel,
   SyncQueuePanel,
 } from '@/components/sync'
-import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug, Download, Upload, Sparkles } from 'lucide-react'
+import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug, Download, Upload, Sparkles, Settings2, HardDrive } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import type { LayoutType } from '@/types'
+
+// ─── 侧边栏分组 ───────────────────────────────────────
+
+type SettingsTab = 'general' | 'ai' | 'data'
+
+const SETTINGS_TABS: Array<{
+  id: SettingsTab
+  label: string
+  desc: string
+  icon: typeof Settings2
+}> = [
+  { id: 'general', label: '通用', desc: '外观、渲染、画布与编辑', icon: Settings2 },
+  { id: 'ai', label: 'AI 服务', desc: '千问云端点与 Key', icon: Sparkles },
+  { id: 'data', label: '数据与同步', desc: '备份、GitHub 与 Agent 同步', icon: HardDrive },
+]
+
+const TAB_STORAGE_KEY = 'settings-tab'
 
 export function SettingsPage() {
   const { settings, updateSettings, resetSettings } = useSettingsStore()
   const [wheelMode, setWheelModeState] = useState<WheelMode>(getWheelMode)
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    const saved = localStorage.getItem(TAB_STORAGE_KEY)
+    return SETTINGS_TABS.some((t) => t.id === saved) ? (saved as SettingsTab) : 'general'
+  })
   const {
     isAuthenticated,
     userName,
@@ -67,91 +88,57 @@ export function SettingsPage() {
   const handleReset = () => {
     if (confirm('确定要重置所有设置为默认值吗？')) {
       resetSettings()
+      setWheelMode('pan')
+      setWheelModeState('pan')
     }
+  }
+
+  const selectTab = (id: SettingsTab) => {
+    setActiveTab(id)
+    localStorage.setItem(TAB_STORAGE_KEY, id)
   }
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="container max-w-2xl py-8 mx-auto">
-        <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="container max-w-4xl py-8 mx-auto px-4">
+        <div className="mb-6">
           <h1 className="text-2xl font-bold">设置</h1>
           <p className="text-muted-foreground">自定义您的应用配置</p>
         </div>
-        <Button variant="outline" onClick={handleReset}>
-          <RotateCcw className="h-4 w-4 mr-2" />
-          重置
-        </Button>
-      </div>
 
-      <div className="space-y-6">
-        {/* GitHub 连接状态卡片 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Github className="h-5 w-5" />
-              GitHub 同步
-            </CardTitle>
-            <CardDescription>将图表数据同步到 GitHub 仓库</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {isAuthenticated ? (
-              <>
-                <div className="flex items-center justify-between p-3 bg-green-500/10 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="font-medium">{userName || userLogin}</p>
-                      <p className="text-sm text-muted-foreground">@{userLogin}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => syncNow()}
-                      disabled={isSyncing}
-                    >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
-                      {isSyncing ? '同步中...' : '立即同步'}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={disconnect}>
-                      <LogOut className="h-4 w-4 mr-2" />
-                      断开
-                    </Button>
-                  </div>
-                </div>
+        <div className="flex items-start gap-6">
+          {/* 侧边栏分组导航 */}
+          <nav className="w-44 shrink-0 sticky top-0 flex flex-col gap-1">
+            {SETTINGS_TABS.map((tab) => {
+              const Icon = tab.icon
+              const active = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => selectTab(tab.id)}
+                  className={`flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? 'bg-accent text-accent-foreground font-medium'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="min-w-0">
+                    {tab.label}
+                    <span className="block text-[11px] font-normal text-muted-foreground truncate">
+                      {tab.desc}
+                    </span>
+                  </span>
+                </button>
+              )
+            })}
+          </nav>
 
-                {syncError && (
-                  <div className="flex items-start gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    <span>{syncError}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="text-center py-4">
-                <p className="text-muted-foreground mb-4">
-                  连接 GitHub 后，您的图表数据将自动备份到云端
-                </p>
-                <Button onClick={() => setLoginOpen(true)}>
-                  <Github className="h-4 w-4 mr-2" />
-                  连接 GitHub
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* 同步状态面板 */}
-        {isAuthenticated && <SyncStatusPanel />}
-
-        {/* 同步设置面板 */}
-        <SyncSettingsPanel />
-
-        {/* 同步队列面板 */}
-        {isAuthenticated && <SyncQueuePanel />}
-
+          {/* 当前分组内容 */}
+          <div className="flex-1 min-w-0">
+            {activeTab === 'general' && (
+              <div className="space-y-6">
+        {/* ── 通用 ── */}
         <Card>
           <CardHeader>
             <CardTitle>外观</CardTitle>
@@ -273,17 +260,7 @@ export function SettingsPage() {
             </div>
           </CardContent>
         </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>AI 服务</CardTitle>
-            <CardDescription>千问云端点与 Key（Token 套餐 / API 按量付费双方案）</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <AiServiceCard />
-          </CardContent>
-        </Card>
-
+        
         <Card>
           <CardHeader>
             <CardTitle>画布交互</CardTitle>
@@ -294,7 +271,7 @@ export function SettingsPage() {
               <div>
                 <Label>滚轮行为</Label>
                 <p className="text-sm text-muted-foreground">
-                  平移：滚轮/双指滑动平移、捏合或 Ctrl+滚轮缩放（触控板友好）；缩放：滚轮直接缩放（旧习惯）；自动：启发式区分设备
+                  平移：滚轮/双指滑动平移、捽合或 Ctrl+滚轮缩放（触控板友好）；缩放：滚轮直接缩放（旧习惯）；自动：启发式区分设备
                 </p>
               </div>
               <Select
@@ -317,7 +294,7 @@ export function SettingsPage() {
             </div>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardHeader>
             <CardTitle>导出</CardTitle>
@@ -344,7 +321,7 @@ export function SettingsPage() {
             </div>
           </CardContent>
         </Card>
-
+        
         <Card>
           <CardHeader>
             <CardTitle>自动保存</CardTitle>
@@ -374,7 +351,89 @@ export function SettingsPage() {
             </div>
           </CardContent>
         </Card>
-
+        
+              <Button variant="outline" onClick={handleReset} className="w-full">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                重置所有设置
+              </Button>
+              </div>
+            )}
+        
+            {activeTab === 'ai' && (
+              <div className="space-y-6">
+        {/* ── AI 服务 ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle>AI 服务</CardTitle>
+            <CardDescription>千问云端点与 Key（Token 套餐 / API 按量付费双方案）</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AiServiceCard />
+          </CardContent>
+        </Card>
+              </div>
+            )}
+        
+            {activeTab === 'data' && (
+              <div className="space-y-6">
+        {/* ── 数据与同步 ── */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Github className="h-5 w-5" />
+              GitHub 同步
+            </CardTitle>
+            <CardDescription>将图表数据同步到 GitHub 仓库</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isAuthenticated ? (
+              <>
+                <div className="flex items-center justify-between p-3 bg-green-500/10 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    <div>
+                      <p className="font-medium">{userName || userLogin}</p>
+                      <p className="text-sm text-muted-foreground">@{userLogin}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => syncNow()}
+                      disabled={isSyncing}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                      {isSyncing ? '同步中...' : '立即同步'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={disconnect}>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      断开
+                    </Button>
+                  </div>
+                </div>
+        
+                {syncError && (
+                  <div className="flex items-start gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <span>{syncError}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-4">
+                <p className="text-muted-foreground mb-4">
+                  连接 GitHub 后，您的图表数据将自动备份到云端
+                </p>
+                <Button onClick={() => setLoginOpen(true)}>
+                  <Github className="h-4 w-4 mr-2" />
+                  连接 GitHub
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -405,21 +464,18 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>可视化编辑器</CardTitle>
-            <CardDescription>拖拽式图表编辑功能</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" disabled className="w-full">
-              可视化编辑器（即将上线）
-            </Button>
-            <p className="text-sm text-muted-foreground mt-2">
-              可视化编辑器功能正在开发中，敬请期待。
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+        {/* 同步状态面板 */}
+        {isAuthenticated && <SyncStatusPanel />}
+
+        {/* 同步设置面板 */}
+        <SyncSettingsPanel />
+
+        {/* 同步队列面板 */}
+        {isAuthenticated && <SyncQueuePanel />}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <GitHubLoginDialog open={loginOpen} onOpenChange={setLoginOpen} />
