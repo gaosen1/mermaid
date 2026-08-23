@@ -15,13 +15,16 @@ export interface AiEndpointProfile {
 export const AI_PROFILE_PRESETS: Record<AiProfileId, { name: string; baseUrl: string }> = {
   'token-plan': {
     name: 'Token 套餐（订阅）',
-    baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
+    baseUrl: 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
   },
   'api-payg': {
     name: 'API 按量付费',
     baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   },
 }
+
+/** 旧版预填错误的 Token 套餐端点，保存过该值的配置自动迁移到正确地址 */
+const LEGACY_TOKEN_PLAN_BASE = 'https://coding.dashscope.aliyuncs.com/v1'
 
 /** 按量付费端点（兼容旧引用） */
 export const AI_API_BASE = AI_PROFILE_PRESETS['api-payg'].baseUrl
@@ -59,6 +62,11 @@ export function getAiProfiles(): Record<AiProfileId, AiEndpointProfile> {
   } catch {
     // 解析失败走默认
   }
+  // 旧版错误预填端点迁移
+  if (profiles['token-plan'].baseUrl === LEGACY_TOKEN_PLAN_BASE) {
+    profiles['token-plan'].baseUrl = AI_PROFILE_PRESETS['token-plan'].baseUrl
+    saveAiProfiles(profiles)
+  }
   // 旧版单 key 迁移（迁移后删除旧键，避免两处不一致）
   const legacy = localStorage.getItem(LEGACY_KEY_STORAGE)
   if (legacy && !profiles['api-payg'].apiKey) {
@@ -71,7 +79,11 @@ export function getAiProfiles(): Record<AiProfileId, AiEndpointProfile> {
 
 export function saveAiProfiles(profiles: Record<AiProfileId, AiEndpointProfile>): void {
   localStorage.setItem(PROFILES_STORAGE, JSON.stringify(profiles))
+  window.dispatchEvent(new CustomEvent(AI_PROFILES_CHANGED_EVENT))
 }
+
+/** 配置变更事件（同 SPA 内 localStorage 不触发 storage 事件，自行派发） */
+export const AI_PROFILES_CHANGED_EVENT = 'ai-profiles-changed'
 
 export function getActiveAiProfileId(): AiProfileId {
   const v = localStorage.getItem(ACTIVE_PROFILE_STORAGE)
@@ -80,6 +92,7 @@ export function getActiveAiProfileId(): AiProfileId {
 
 export function setActiveAiProfileId(id: AiProfileId): void {
   localStorage.setItem(ACTIVE_PROFILE_STORAGE, id)
+  window.dispatchEvent(new CustomEvent(AI_PROFILES_CHANGED_EVENT))
 }
 
 /** 当前激活方案的端点 */

@@ -143,9 +143,10 @@ import { CSS } from '@dnd-kit/utilities'
 import { buildTree, getContainerItems, getContainerOf, getItemKind, type TreeNode } from './utils/diagramTree'
 import { AiOrganizeDialog } from './AiOrganizeDialog'
 import { MoveToFolderDialog, type MoveTargetItem } from './MoveToFolderDialog'
-import { ApiKeyDialog } from '@/components/mermaid/ApiKeyDialog'
 import { useAiNameSuggestions } from '@/components/mermaid/useAiNameSuggestions'
 import { getAiApiKey } from '@/utils/aiChat'
+import { navigateToSettings } from '@/utils/navigation'
+import { toast } from 'sonner'
 import { isAiNameableType } from '@/utils/aiOrganize'
 import { requestThumbnail, subscribeThumbs, getThumb } from '@/utils/thumbnail'
 import { PALETTE_ACTION_EVENT } from '@/utils/paletteAction'
@@ -638,7 +639,14 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
   // AI 能力：命名建议（重命名弹窗）与目录整理
   const nameSuggestions = useAiNameSuggestions()
   const [organizeOpen, setOrganizeOpen] = useState(false)
-  const [aiKeyDialogOpen, setAiKeyDialogOpen] = useState(false)
+  // AI 命名需要 Key 时引导去设置页（全局配置入口）
+  useEffect(() => {
+    if (nameSuggestions.needKey) {
+      nameSuggestions.setNeedKey(false)
+      toast.error('请先在 设置 → AI 服务 中配置端点与 Key')
+      navigateToSettings()
+    }
+  }, [nameSuggestions.needKey, nameSuggestions])
   // 「移入目标路径」弹窗的当前操作对象
   const [moveItem, setMoveItem] = useState<MoveTargetItem | null>(null)
 
@@ -865,10 +873,11 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
     nameSuggestions.reset()
   }
 
-  // AI 整理入口：未配置 Key 时先弹 Key 配置弹窗
+  // AI 整理入口：未配置 Key 时引导去设置页
   const handleAiOrganizeClick = () => {
     if (!getAiApiKey()) {
-      setAiKeyDialogOpen(true)
+      toast.error('请先在 设置 → AI 服务 中配置端点与 Key')
+      navigateToSettings()
       return
     }
     setOrganizeOpen(true)
@@ -1405,13 +1414,6 @@ export function DiagramList({ projectId, onSelectDiagram }: DiagramListProps) {
           if (!open) setMoveItem(null)
         }}
         onMove={handleMoveItem}
-      />
-
-      {/* AI 功能共用的 API Key 配置弹窗 */}
-      <ApiKeyDialog open={aiKeyDialogOpen} onOpenChange={setAiKeyDialogOpen} />
-      <ApiKeyDialog
-        open={nameSuggestions.needKey}
-        onOpenChange={(v) => nameSuggestions.setNeedKey(v)}
       />
     </div>
   )

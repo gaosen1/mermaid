@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { Loader2, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ApiKeyDialog } from './ApiKeyDialog'
 import { useAiNameSuggestions } from './useAiNameSuggestions'
-import { getAiApiKey } from '@/utils/aiChat'
+import { navigateToSettings } from '@/utils/navigation'
 import { isAiNameableType } from '@/utils/aiOrganize'
 import type { Diagram } from '@/types'
 
@@ -78,6 +77,25 @@ export function AiNamePopover({ diagram, existingNames, source, onApplyName }: A
           {suggestions.error && (
             <div className="text-xs text-destructive py-1">{suggestions.error}</div>
           )}
+          {suggestions.needKey && (
+            <div className="py-1 space-y-1.5">
+              <div className="text-xs text-muted-foreground">
+                尚未配置 AI 服务（端点与 Key）
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[11px] w-full"
+                onClick={() => {
+                  suggestions.setNeedKey(false)
+                  setOpen(false)
+                  navigateToSettings()
+                }}
+              >
+                前往设置
+              </Button>
+            </div>
+          )}
           {!suggestions.loading && suggestions.names.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {suggestions.names.map((name) => (
@@ -106,14 +124,6 @@ export function AiNamePopover({ diagram, existingNames, source, onApplyName }: A
           </div>
         </PopoverContent>
       </Popover>
-      {/* Key 配置完成后关闭弹窗，用户再次点击重新触发 */}
-      <ApiKeyDialog
-        open={suggestions.needKey}
-        onOpenChange={(v) => {
-          suggestions.setNeedKey(v)
-          if (!v && getAiApiKey()) handleGenerate()
-        }}
-      />
     </>
   )
 }

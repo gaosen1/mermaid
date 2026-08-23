@@ -23,12 +23,12 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ApiKeyDialog } from '@/components/mermaid/ApiKeyDialog'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { db } from '@/db'
 import type { Diagram, DiagramType, Project } from '@/types'
 import { renderMarkdownToHtml } from '@/utils/markdown'
 import { getAiApiKey } from '@/utils/aiChat'
+import { navigateToSettings } from '@/utils/navigation'
 import { streamReviewSummary, REVIEW_SUMMARY_LIMIT, type ReviewNoteItem } from '@/utils/aiOrganize'
 import { copyTextToClipboard } from '@/utils/portable'
 
@@ -138,7 +138,6 @@ export function NoteReviewDialog({ open, onOpenChange, onOpenDiagram }: NoteRevi
   const [summary, setSummary] = useState('')
   const [generating, setGenerating] = useState(false)
   const [summaryError, setSummaryError] = useState<string | null>(null)
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -225,7 +224,8 @@ export function NoteReviewDialog({ open, onOpenChange, onOpenDiagram }: NoteRevi
   const handleGenerateSummary = async () => {
     if (generating || hits.length === 0) return
     if (!getAiApiKey()) {
-      setKeyDialogOpen(true)
+      toast.error('请先在 设置 → AI 服务 中配置端点与 Key')
+      navigateToSettings()
       return
     }
 
@@ -458,8 +458,6 @@ export function NoteReviewDialog({ open, onOpenChange, onOpenDiagram }: NoteRevi
             </div>
           )}
         </div>
-
-        <ApiKeyDialog open={keyDialogOpen} onOpenChange={setKeyDialogOpen} />
       </DialogContent>
     </Dialog>
   )

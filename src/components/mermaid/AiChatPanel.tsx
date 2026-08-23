@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Copy,
   ImagePlus,
-  KeyRound,
   Loader2,
   MessagesSquare,
   SendHorizontal,
@@ -32,9 +31,10 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { renderMarkdownToHtml } from '@/utils/markdown'
-import { ApiKeyDialog } from './ApiKeyDialog'
+import { navigateToSettings } from '@/utils/navigation'
 import {
   AI_MODELS,
+  AI_PROFILES_CHANGED_EVENT,
   buildGenerateSystemPrompt,
   buildMarkdownSystemPrompt,
   buildSystemPrompt,
@@ -144,7 +144,6 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
   const [model, setModel] = useState(getStoredAiModel)
   const [loading, setLoading] = useState(false)
   const [hasKey, setHasKey] = useState(() => Boolean(getAiApiKey()))
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false)
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false)
   const [thinking, setThinking] = useState(() => localStorage.getItem('ai-chat-thinking') !== '0')
   const [withSkill, setWithSkill] = useState(() => localStorage.getItem('ai-chat-with-skill') !== '0')
@@ -222,10 +221,16 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
     }
   }
 
-  const handleKeyDialogOpenChange = (open: boolean) => {
-    setKeyDialogOpen(open)
-    if (!open) setHasKey(Boolean(getAiApiKey()))
-  }
+  // 配置变更（设置页保存）或窗口重新聚焦后刷新 Key 状态
+  useEffect(() => {
+    const refresh = () => setHasKey(Boolean(getAiApiKey()))
+    window.addEventListener('focus', refresh)
+    window.addEventListener(AI_PROFILES_CHANGED_EVENT, refresh)
+    return () => {
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener(AI_PROFILES_CHANGED_EVENT, refresh)
+    }
+  }, [])
 
   // 附加图片（限 4MB）→ dataURL，供图生图使用
   const handleAttachFile = (file: File) => {
@@ -243,7 +248,8 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
 
     const apiKey = getAiApiKey()
     if (!apiKey) {
-      setKeyDialogOpen(true)
+      setHasKey(false)
+      toast.error('请先在 设置 → AI 服务 中配置端点与 Key')
       return
     }
 
@@ -491,16 +497,19 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
         >
           <SquarePen className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0"
-          title={hasKey ? '已配置 API Key，点击修改' : '配置千问云 API Key'}
-          onClick={() => setKeyDialogOpen(true)}
-        >
-          <KeyRound className={`h-4 w-4 ${hasKey ? 'text-green-500' : ''}`} />
-        </Button>
       </div>
+
+      {/* 未配置 AI 服务时引导去设置页（全局配置入口） */}
+      {!hasKey && (
+        <div className="mx-3 mt-3 flex items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+          <p className="text-xs leading-5">
+            尚未配置 AI 服务（端点与 Key）。请在「设置 → AI 服务」中配置后使用。
+          </p>
+          <Button variant="outline" size="sm" className="shrink-0 h-7 text-xs" onClick={navigateToSettings}>
+            前往设置
+          </Button>
+        </div>
+      )}
 
       {/* 消息列表 */}
       <div ref={scrollRef} onScroll={handleListScroll} className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
@@ -664,16 +673,13 @@ export function AiChatPanel({ diagramId, source, onApplySource, mode = 'mermaid'
             size="sm"
             className="h-8 w-8 p-0"
             onClick={handleSend}
-            disabled={loading || (mode === 'mermaid' && genMode && !input.trim() && !attachedImage)}
-            title="发送"
+            disabled={loading || !hasKey || (mode === 'mermaid' && genMode && !input.trim() && !attachedImage)}
+            title={!hasKey ? '请先在设置 → AI 服务中配置' : '发送'}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SendHorizontal className="h-4 w-4" />}
           </Button>
         </div>
       </div>
-
-      {/* API Key 配置弹窗（共享组件） */}
-      <ApiKeyDialog open={keyDialogOpen} onOpenChange={handleKeyDialogOpenChange} />
     </div>
   )
 }
