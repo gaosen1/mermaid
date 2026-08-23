@@ -41,6 +41,7 @@ import {
   SyncQueuePanel,
 } from '@/components/sync'
 import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug, Download, Upload } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
 import type { LayoutType } from '@/types'
 
 export function SettingsPage() {
@@ -242,6 +243,27 @@ export function SettingsPage() {
                   <SelectItem value="base">基础</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>列表显示</CardTitle>
+            <CardDescription>图表列表的展示选项</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>列表缩略图</Label>
+                <p className="text-sm text-muted-foreground">
+                  在图表列表中为 mermaid / svg 生成矢量缩略图；关闭可减少渲染开销
+                </p>
+              </div>
+              <Switch
+                checked={settings.showThumbnails !== false}
+                onCheckedChange={(v) => updateSettings({ showThumbnails: v })}
+              />
             </div>
           </CardContent>
         </Card>

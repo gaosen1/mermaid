@@ -263,12 +263,14 @@ export const DEFAULT_SETTINGS: UserSettings = {
   defaultExportFormat: 'png',
   renderTheme: 'base',
   autoSaveInterval: 30000,
+  showThumbnails: true,
 }
 
 export async function initSettings(): Promise<UserSettings> {
   const existing = await db.settings.get('default')
   if (existing) {
-    return existing
+    // 旧版本存储的行可能缺少新增字段，用默认值兜底合并
+    return { ...DEFAULT_SETTINGS, ...existing }
   }
   await db.settings.add(DEFAULT_SETTINGS)
   return DEFAULT_SETTINGS

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useSyncExternalStore } from 'react'
 import { useDiagramStore } from '@/stores/diagramStore'
 import { useFolderStore } from '@/stores/folderStore'
 import { useSyncStore } from '@/stores/syncStore'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -153,6 +154,7 @@ import { PALETTE_ACTION_EVENT } from '@/utils/paletteAction'
 function DiagramThumb({ diagram }: { diagram: Diagram }) {
   const ref = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
+  const enabled = useSettingsStore((s) => s.settings.showThumbnails !== false)
 
   useEffect(() => {
     const el = ref.current
@@ -187,11 +189,12 @@ function DiagramThumb({ diagram }: { diagram: Diagram }) {
   }, [])
 
   useEffect(() => {
-    if (visible) requestThumbnail(diagram.id, diagram.source)
-  }, [visible, diagram.id, diagram.source])
+    if (visible && enabled) requestThumbnail(diagram.id, diagram.source)
+  }, [visible, enabled, diagram.id, diagram.source])
 
   const thumb = useSyncExternalStore(subscribeThumbs, () => getThumb(diagram.id))
 
+  if (!enabled) return null
   if (diagram.type === 'svg') {
     if (diagram.source.length >= 100 * 1024) return null
     return (

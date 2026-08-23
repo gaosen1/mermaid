@@ -108,6 +108,8 @@ export interface UserSettings {
   defaultExportFormat: 'png' | 'svg'
   renderTheme: 'default' | 'dark' | 'forest' | 'neutral' | 'base'
   autoSaveInterval: number
+  /** 图表列表是否显示缩略图 */
+  showThumbnails: boolean
 }
 
 /**
