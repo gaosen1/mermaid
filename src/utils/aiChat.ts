@@ -9,7 +9,17 @@ export interface AiEndpointProfile {
   name: string
   baseUrl: string
   apiKey: string
+  /** 不支持浏览器跨域的端点经本地 agent-api /api/ai-proxy 转发 */
+  useProxy?: boolean
 }
+
+/** agent-api.mjs 的 AI CORS 代理入口（供不支持 CORS 的端点使用） */
+export function getAiProxyBase(): string {
+  return `http://127.0.0.1:${AGENT_API_DEFAULT_PORT}/api/ai-proxy`
+}
+
+/** 本地 Agent API 服务默认端口（与 scripts/agent-api.mjs 保持一致） */
+export const AGENT_API_DEFAULT_PORT = 4789
 
 /** 各方案的默认端点 */
 export const AI_PROFILE_PRESETS: Record<AiProfileId, { name: string; baseUrl: string }> = {
@@ -55,6 +65,7 @@ export function getAiProfiles(): Record<AiProfileId, AiEndpointProfile> {
             ...profiles[id],
             baseUrl: typeof s.baseUrl === 'string' && s.baseUrl.trim() ? s.baseUrl.trim() : profiles[id].baseUrl,
             apiKey: typeof s.apiKey === 'string' ? s.apiKey : '',
+            useProxy: Boolean(s.useProxy),
           }
         }
       }
@@ -100,6 +111,21 @@ export function getAiApiBase(): string {
   return getAiProfiles()[getActiveAiProfileId()].baseUrl
 }
 
+/**
+ * 构造请求 URL 与头：方案开启本地代理时，请求发给 agent-api 的
+ * /api/ai-proxy，真实端点放 X-Target-Base 头；直连端点则常规拼接。
+ */
+function buildAiRequest(endpointPath: string): { url: string; headers: Record<string, string> } {
+  const profile = getAiProfiles()[getActiveAiProfileId()]
+  if (profile.useProxy) {
+    return {
+      url: `${getAiProxyBase()}/${endpointPath}`,
+      headers: { 'X-Target-Base': profile.baseUrl.replace(/\/+$/, '') },
+    }
+  }
+  return { url: `${profile.baseUrl.replace(/\/+$/, '')}/${endpointPath}`, headers: {} }
+}
+
 /** 当前激活方案的 Key */
 export function getAiApiKey(): string {
   return getAiProfiles()[getActiveAiProfileId()].apiKey
@@ -117,12 +143,25 @@ export function clearAiApiKey(): void {
   setAiApiKey('')
 }
 
-/** 连接测试：最小 chat 请求探测端点 + Key 是否可用 */
-export async function testAiConnection(baseUrl: string, apiKey: string, model: string): Promise<{ ok: boolean; message: string }> {
+/** 连接测试：最小 chat 请求探测端点 + Key 是否可用；target 非空时经本地代理转发 */
+async function probeEndpoint(options: {
+  baseUrl: string
+  apiKey: string
+  model: string
+  target?: string
+}): Promise<{ ok: boolean; message: string }> {
+  const { baseUrl, apiKey, model, target } = options
   try {
-    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+    const viaProxy = Boolean(target)
+    const base = viaProxy ? getAiProxyBase() : baseUrl
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    }
+    if (viaProxy) headers['X-Target-Base'] = target!.replace(/\/+$/, '')
+    const res = await fetch(`${base.replace(/\/+$/, '')}/chat/completions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      headers,
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: 'reply OK' }],
@@ -137,6 +176,33 @@ export async function testAiConnection(baseUrl: string, apiKey: string, model: s
   } catch (err) {
     return { ok: false, message: err instanceof Error ? err.message : '网络错误' }
   }
+}
+
+/**
+ * 连接测试（带代理兑底）：先直连；失败且疑似 CORS（fetch 层错误）时
+ * 自动尝试本地 agent-api 的 /api/ai-proxy 转发（目标仍为该端点）。
+ */
+export async function testAiConnection(baseUrl: string, apiKey: string, model: string): Promise<{ ok: boolean; message: string; viaProxy?: boolean }> {
+  const direct = await probeEndpoint({ baseUrl, apiKey, model })
+  if (direct.ok) return direct
+
+  // fetch 层错误（Failed to fetch / TypeError）多为 CORS/网络拦截，尝试代理
+  const isFetchLevelError = /fetch|network|cors/i.test(direct.message)
+  if (isFetchLevelError) {
+    const proxied = await probeEndpoint({ baseUrl, apiKey, model, target: baseUrl })
+    if (proxied.ok) {
+      return {
+        ok: true,
+        viaProxy: true,
+        message: `该端点不支持浏览器跨域（CORS），已通过本地代理连通。已自动启用「本地代理转发」，保存即可（需保持 node scripts/agent-api.mjs 运行）。`,
+      }
+    }
+    return {
+      ok: false,
+      message: `直连失败（端点可能不支持跨域）：${direct.message}；本地代理也不可用：${proxied.message}（请先运行 node scripts/agent-api.mjs）`,
+    }
+  }
+  return direct
 }
 
 export interface AiModelOption {
@@ -265,11 +331,13 @@ export async function requestAiCompletion(options: {
 }): Promise<AiCompletionResult> {
   const { apiKey, model, messages, thinking = true, signal, onUpdate } = options
 
-  const response = await fetch(`${getAiApiBase()}/chat/completions`, {
+  const { url, headers: baseHeaders } = buildAiRequest('chat/completions')
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
+      ...baseHeaders,
     },
     body: JSON.stringify({
       model,
@@ -371,8 +439,9 @@ export async function discoverVisionModel(apiKey: string): Promise<string> {
   const cached = localStorage.getItem(VL_MODEL_KEY)
   if (cached) return cached
   try {
-    const res = await fetch(`${getAiApiBase()}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const { url, headers: baseHeaders } = buildAiRequest('models')
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${apiKey}`, ...baseHeaders },
     })
     if (res.ok) {
       const data = (await res.json()) as { data?: Array<{ id: string }> }
@@ -402,11 +471,13 @@ export async function requestVisionCompletion(options: {
   prompt: string
   signal?: AbortSignal
 }): Promise<string> {
-  const response = await fetch(`${getAiApiBase()}/chat/completions`, {
+  const { url, headers: baseHeaders } = buildAiRequest('chat/completions')
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${options.apiKey}`,
+      ...baseHeaders,
     },
     body: JSON.stringify({
       model: options.model,

@@ -69,6 +69,10 @@ export function ApiKeyDialog({ open, onOpenChange }: ApiKeyDialogProps) {
     setTest((prev) => ({ ...prev, [id]: { status: 'testing', message: '测试中…' } }))
     // flash 模型消耗最小，仅用于探测端点与 Key
     const result = await testAiConnection(p.baseUrl.trim(), p.apiKey.trim(), 'qwen3.7-flash')
+    // 直连被 CORS 拦截但代理连通：自动开启本地代理转发
+    if (result.viaProxy) {
+      setProfiles((prev) => ({ ...prev, [id]: { ...prev[id], useProxy: true } }))
+    }
     setTest((prev) => ({
       ...prev,
       [id]: { status: result.ok ? 'ok' : 'fail', message: result.message },
@@ -123,6 +127,14 @@ export function ApiKeyDialog({ open, onOpenChange }: ApiKeyDialogProps) {
                   {isActive && (
                     <span className="text-[10px] text-primary border border-primary/40 rounded px-1.5 py-0.5">
                       使用中
+                    </span>
+                  )}
+                  {p.useProxy && (
+                    <span
+                      className="text-[10px] text-amber-600 border border-amber-500/40 rounded px-1.5 py-0.5"
+                      title="该端点不支持浏览器跨域，请求经本地 agent-api 的 /api/ai-proxy 转发"
+                    >
+                      本地代理
                     </span>
                   )}
                 </div>

@@ -21,6 +21,8 @@
  *   GET /api/diagrams/:id/assets/:kind    产物文件（source|standard|svg|png|portable）
  *   POST /api/diagrams                    写回笔记（写入 inbox/，Web 应用下次同步时导入）
  *     body: { name, type: mermaid|markdown|txt, source, projectName? }
+ *   ANY /api/ai-proxy/*                   AI 端点 CORS 代理（仅限本机）：转发到
+ *     X-Target-Base 头指定的端点，供浏览器调用不支持 CORS 的端点（如 Token 套餐）
  */
 
 import http from 'node:http'
@@ -148,6 +150,63 @@ const server = http.createServer((req, res) => {
     if (!isLocal(req)) return sendJson(res, 403, { error: 'token 接口仅限本机调用' })
     const auth = getOrIssueToken(true)
     return sendJson(res, 200, auth)
+  }
+
+  // AI 端点 CORS 代理：部分端点（如 Token 套餐）不返回 CORS 头，
+  // 浏览器无法直连；由本服务转发，仅限本机调用
+  if (url.pathname.startsWith('/api/ai-proxy/')) {
+    if (!isLocal(req)) return sendJson(res, 403, { error: 'AI 代理仅限本机调用' })
+
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': req.headers.origin || '*',
+      'Access-Control-Allow-Headers': 'content-type, authorization, x-target-base',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    }
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, corsHeaders)
+      return res.end()
+    }
+
+    const targetBase = req.headers['x-target-base']
+    if (typeof targetBase !== 'string' || !/^https:\/\//.test(targetBase)) {
+      return sendJson(res, 400, { error: '缺少合法的 X-Target-Base 头（https://…）' })
+    }
+    const subPath = url.pathname.slice('/api/ai-proxy'.length) // 以 / 开头
+    const targetUrl = targetBase.replace(/\/+$/, '') + subPath + url.search
+
+    let bodyChunks = []
+    let bodySize = 0
+    req.on('data', (c) => {
+      bodyChunks.push(c)
+      bodySize += c.length
+      if (bodySize > 20 * 1024 * 1024) req.destroy()
+    })
+    req.on('end', async () => {
+      try {
+        const upstream = await fetch(targetUrl, {
+          method: req.method,
+          headers: {
+            'Content-Type': req.headers['content-type'] || 'application/json',
+            ...(req.headers.authorization ? { Authorization: req.headers.authorization } : {}),
+          },
+          body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.concat(bodyChunks),
+        })
+        const contentType = upstream.headers.get('content-type') || 'application/octet-stream'
+        res.writeHead(upstream.status, { ...corsHeaders, 'Content-Type': contentType })
+        if (upstream.body) {
+          // 流式透传（SSE 场景）
+          for await (const chunk of upstream.body) res.write(chunk)
+        }
+        res.end()
+      } catch (err) {
+        if (!res.headersSent) {
+          sendJson(res, 502, { error: `转发失败：${err && err.message}` })
+        } else {
+          res.end()
+        }
+      }
+    })
+    return undefined
   }
 
   // 写回：POST /api/diagrams → inbox/<uuid>.json

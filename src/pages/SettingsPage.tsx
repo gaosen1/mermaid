@@ -745,6 +745,14 @@ function AiServiceCard() {
             <span className="text-[10px] text-primary border border-primary/40 rounded px-1.5 py-0.5">
               使用中
             </span>
+            {active.useProxy && (
+              <span
+                className="text-[10px] text-amber-600 border border-amber-500/40 rounded px-1.5 py-0.5"
+                title="请求经本地 agent-api 的 /api/ai-proxy 转发（端点不支持浏览器跨域）"
+              >
+                本地代理
+              </span>
+            )}
           </div>
           <p className="text-xs text-muted-foreground mt-1 truncate font-mono" title={active.baseUrl}>
             {active.baseUrl}
