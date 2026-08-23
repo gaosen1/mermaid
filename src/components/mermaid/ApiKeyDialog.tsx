@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -10,67 +11,191 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { clearAiApiKey, getAiApiKey, setAiApiKey } from '@/utils/aiChat'
+import {
+  getAiProfiles,
+  saveAiProfiles,
+  getActiveAiProfileId,
+  setActiveAiProfileId,
+  testAiConnection,
+  AI_PROFILE_PRESETS,
+  type AiEndpointProfile,
+  type AiProfileId,
+} from '@/utils/aiChat'
 
 interface ApiKeyDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
+type TestState = { status: 'idle' | 'testing' | 'ok' | 'fail'; message: string }
+
+const PROFILE_IDS: AiProfileId[] = ['token-plan', 'api-payg']
+
 /**
- * 千问云 API Key 配置弹窗（AI 对话、AI 命名、AI 整理共用）。
+ * AI 服务配置面板（AI 对话、AI 命名、AI 整理共用）。
+ * 双方案各持一套 base URL + Key，一键切换激活方案。
  */
 export function ApiKeyDialog({ open, onOpenChange }: ApiKeyDialogProps) {
-  const [draft, setDraft] = useState('')
-  const [hasKey, setHasKey] = useState(false)
+  const [profiles, setProfiles] = useState<Record<AiProfileId, AiEndpointProfile>>(getAiProfiles)
+  const [activeId, setActiveId] = useState<AiProfileId>(getActiveAiProfileId)
+  const [test, setTest] = useState<Record<AiProfileId, TestState>>({
+    'token-plan': { status: 'idle', message: '' },
+    'api-payg': { status: 'idle', message: '' },
+  })
 
   useEffect(() => {
     if (open) {
-      setDraft('')
-      setHasKey(Boolean(getAiApiKey()))
+      setProfiles(getAiProfiles())
+      setActiveId(getActiveAiProfileId())
+      setTest({
+        'token-plan': { status: 'idle', message: '' },
+        'api-payg': { status: 'idle', message: '' },
+      })
     }
   }, [open])
 
-  const handleSave = () => {
-    if (!draft.trim()) return
-    setAiApiKey(draft)
-    onOpenChange(false)
+  const updateProfile = (id: AiProfileId, patch: Partial<AiEndpointProfile>) => {
+    setProfiles((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }))
+    setTest((prev) => ({ ...prev, [id]: { status: 'idle', message: '' } }))
   }
 
-  const handleClear = () => {
-    clearAiApiKey()
+  const resetBaseUrl = (id: AiProfileId) => {
+    updateProfile(id, { baseUrl: AI_PROFILE_PRESETS[id].baseUrl })
+  }
+
+  const handleTest = async (id: AiProfileId) => {
+    const p = profiles[id]
+    if (!p.apiKey.trim() || !p.baseUrl.trim()) return
+    setTest((prev) => ({ ...prev, [id]: { status: 'testing', message: '测试中…' } }))
+    // flash 模型消耗最小，仅用于探测端点与 Key
+    const result = await testAiConnection(p.baseUrl.trim(), p.apiKey.trim(), 'qwen3.7-flash')
+    setTest((prev) => ({
+      ...prev,
+      [id]: { status: result.ok ? 'ok' : 'fail', message: result.message },
+    }))
+  }
+
+  const handleSave = () => {
+    const cleaned: Record<AiProfileId, AiEndpointProfile> = {
+      'token-plan': { ...profiles['token-plan'], baseUrl: profiles['token-plan'].baseUrl.trim(), apiKey: profiles['token-plan'].apiKey.trim() },
+      'api-payg': { ...profiles['api-payg'], baseUrl: profiles['api-payg'].baseUrl.trim(), apiKey: profiles['api-payg'].apiKey.trim() },
+    }
+    saveAiProfiles(cleaned)
+    setActiveAiProfileId(activeId)
     onOpenChange(false)
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm!">
+      <DialogContent className="max-w-md!">
         <DialogHeader>
-          <DialogTitle className="text-base">千问云 API Key</DialogTitle>
+          <DialogTitle className="text-base">AI 服务配置</DialogTitle>
           <DialogDescription>
-            Key 仅保存在浏览器本地，用于调用千问云 OpenAI 兼容接口。
+            千问云双方案：Token 套餐与 API 按量付费的端点与 Key 不同，可分别配置并随时切换。配置仅保存在浏览器本地。
           </DialogDescription>
         </DialogHeader>
-        <Input
-          type="password"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="sk-..."
-          autoFocus
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') handleSave()
-          }}
-        />
-        <DialogFooter className="gap-2 sm:justify-between">
-          {hasKey ? (
-            <Button variant="ghost" size="sm" onClick={handleClear} className="text-destructive">
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              清除
-            </Button>
-          ) : (
-            <span />
-          )}
-          <Button size="sm" onClick={handleSave} disabled={!draft.trim()}>
+
+        <div className="space-y-4 py-1">
+          {PROFILE_IDS.map((id) => {
+            const p = profiles[id]
+            const isActive = activeId === id
+            const t = test[id]
+            return (
+              <div
+                key={id}
+                className={`rounded-md border p-3 space-y-2.5 ${isActive ? 'border-primary' : ''}`}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="ai-profile"
+                    id={`ai-profile-${id}`}
+                    checked={isActive}
+                    onChange={() => setActiveId(id)}
+                    className="accent-[var(--primary)]"
+                  />
+                  <Label
+                    htmlFor={`ai-profile-${id}`}
+                    className="text-sm font-medium cursor-pointer"
+                  >
+                    {p.name}
+                  </Label>
+                  {isActive && (
+                    <span className="text-[10px] text-primary border border-primary/40 rounded px-1.5 py-0.5">
+                      使用中
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Base URL</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={p.baseUrl}
+                      onChange={(e) => updateProfile(id, { baseUrl: e.target.value })}
+                      className="h-8 text-xs font-mono"
+                      spellCheck={false}
+                    />
+                    {p.baseUrl.trim() !== AI_PROFILE_PRESETS[id].baseUrl && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 shrink-0 text-xs"
+                        title="恢复默认端点"
+                        onClick={() => resetBaseUrl(id)}
+                      >
+                        默认
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">API Key</Label>
+                  <div className="flex gap-1.5">
+                    <Input
+                      type="password"
+                      value={p.apiKey}
+                      onChange={(e) => updateProfile(id, { apiKey: e.target.value })}
+                      placeholder="sk-..."
+                      className="h-8 text-xs font-mono"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSave()
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 text-xs"
+                      disabled={!p.apiKey.trim() || !p.baseUrl.trim() || t.status === 'testing'}
+                      onClick={() => handleTest(id)}
+                    >
+                      {t.status === 'testing' ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : null}
+                      测试
+                    </Button>
+                  </div>
+                  {t.status === 'ok' && (
+                    <p className="text-xs text-green-600 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      {t.message}
+                    </p>
+                  )}
+                  {t.status === 'fail' && (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <XCircle className="h-3 w-3" />
+                      {t.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button size="sm" onClick={handleSave}>
             保存
           </Button>
         </DialogFooter>

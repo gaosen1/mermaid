@@ -1,7 +1,130 @@
 import { SKILL_MD } from './dslSkill'
 
-// 千问云 OpenAI 兼容模式
-export const AI_API_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+// ─── 服务端点配置（双方案：Token 套餐 / API 按量付费） ──────────────────
+
+export type AiProfileId = 'token-plan' | 'api-payg'
+
+export interface AiEndpointProfile {
+  id: AiProfileId
+  name: string
+  baseUrl: string
+  apiKey: string
+}
+
+/** 各方案的默认端点 */
+export const AI_PROFILE_PRESETS: Record<AiProfileId, { name: string; baseUrl: string }> = {
+  'token-plan': {
+    name: 'Token 套餐（订阅）',
+    baseUrl: 'https://coding.dashscope.aliyuncs.com/v1',
+  },
+  'api-payg': {
+    name: 'API 按量付费',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  },
+}
+
+/** 按量付费端点（兼容旧引用） */
+export const AI_API_BASE = AI_PROFILE_PRESETS['api-payg'].baseUrl
+
+const PROFILES_STORAGE = 'ai-endpoint-profiles'
+const ACTIVE_PROFILE_STORAGE = 'ai-active-profile'
+const LEGACY_KEY_STORAGE = 'ai-api-key'
+const AI_MODEL_STORAGE = 'ai-chat-model'
+
+function buildDefaultProfiles(): Record<AiProfileId, AiEndpointProfile> {
+  return {
+    'token-plan': { id: 'token-plan', name: AI_PROFILE_PRESETS['token-plan'].name, baseUrl: AI_PROFILE_PRESETS['token-plan'].baseUrl, apiKey: '' },
+    'api-payg': { id: 'api-payg', name: AI_PROFILE_PRESETS['api-payg'].name, baseUrl: AI_PROFILE_PRESETS['api-payg'].baseUrl, apiKey: '' },
+  }
+}
+
+/** 读取两个方案的配置；旧版单 key 自动迁移到「按量付费」方案 */
+export function getAiProfiles(): Record<AiProfileId, AiEndpointProfile> {
+  const profiles = buildDefaultProfiles()
+  try {
+    const raw = localStorage.getItem(PROFILES_STORAGE)
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<Record<AiProfileId, Partial<AiEndpointProfile>>>
+      for (const id of Object.keys(profiles) as AiProfileId[]) {
+        const s = saved[id]
+        if (s) {
+          profiles[id] = {
+            ...profiles[id],
+            baseUrl: typeof s.baseUrl === 'string' && s.baseUrl.trim() ? s.baseUrl.trim() : profiles[id].baseUrl,
+            apiKey: typeof s.apiKey === 'string' ? s.apiKey : '',
+          }
+        }
+      }
+    }
+  } catch {
+    // 解析失败走默认
+  }
+  // 旧版单 key 迁移（迁移后删除旧键，避免两处不一致）
+  const legacy = localStorage.getItem(LEGACY_KEY_STORAGE)
+  if (legacy && !profiles['api-payg'].apiKey) {
+    profiles['api-payg'].apiKey = legacy.trim()
+    saveAiProfiles(profiles)
+    localStorage.removeItem(LEGACY_KEY_STORAGE)
+  }
+  return profiles
+}
+
+export function saveAiProfiles(profiles: Record<AiProfileId, AiEndpointProfile>): void {
+  localStorage.setItem(PROFILES_STORAGE, JSON.stringify(profiles))
+}
+
+export function getActiveAiProfileId(): AiProfileId {
+  const v = localStorage.getItem(ACTIVE_PROFILE_STORAGE)
+  return v === 'token-plan' || v === 'api-payg' ? v : 'api-payg'
+}
+
+export function setActiveAiProfileId(id: AiProfileId): void {
+  localStorage.setItem(ACTIVE_PROFILE_STORAGE, id)
+}
+
+/** 当前激活方案的端点 */
+export function getAiApiBase(): string {
+  return getAiProfiles()[getActiveAiProfileId()].baseUrl
+}
+
+/** 当前激活方案的 Key */
+export function getAiApiKey(): string {
+  return getAiProfiles()[getActiveAiProfileId()].apiKey
+}
+
+/** 写入当前激活方案的 Key */
+export function setAiApiKey(key: string): void {
+  const profiles = getAiProfiles()
+  const id = getActiveAiProfileId()
+  profiles[id].apiKey = key.trim()
+  saveAiProfiles(profiles)
+}
+
+export function clearAiApiKey(): void {
+  setAiApiKey('')
+}
+
+/** 连接测试：最小 chat 请求探测端点 + Key 是否可用 */
+export async function testAiConnection(baseUrl: string, apiKey: string, model: string): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'reply OK' }],
+        max_tokens: 2,
+        enable_thinking: false,
+      }),
+    })
+    if (res.ok) return { ok: true, message: '连接成功' }
+    const data: unknown = await res.json().catch(() => null)
+    const msg = (data as { error?: { message?: string } } | null)?.error?.message
+    return { ok: false, message: msg || `请求失败（${res.status}）` }
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : '网络错误' }
+  }
+}
 
 export interface AiModelOption {
   id: string
@@ -15,21 +138,6 @@ export const AI_MODELS: AiModelOption[] = [
   { id: 'qwen3.7-max', label: 'Qwen3.7-Max' },
   { id: 'qwen3.7-flash', label: 'Qwen3.7-Flash' },
 ]
-
-const AI_KEY_STORAGE = 'ai-api-key'
-const AI_MODEL_STORAGE = 'ai-chat-model'
-
-export function getAiApiKey(): string {
-  return localStorage.getItem(AI_KEY_STORAGE) ?? ''
-}
-
-export function setAiApiKey(key: string): void {
-  localStorage.setItem(AI_KEY_STORAGE, key.trim())
-}
-
-export function clearAiApiKey(): void {
-  localStorage.removeItem(AI_KEY_STORAGE)
-}
 
 export function getStoredAiModel(): string {
   const saved = localStorage.getItem(AI_MODEL_STORAGE)
@@ -144,7 +252,7 @@ export async function requestAiCompletion(options: {
 }): Promise<AiCompletionResult> {
   const { apiKey, model, messages, thinking = true, signal, onUpdate } = options
 
-  const response = await fetch(`${AI_API_BASE}/chat/completions`, {
+  const response = await fetch(`${getAiApiBase()}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -250,7 +358,7 @@ export async function discoverVisionModel(apiKey: string): Promise<string> {
   const cached = localStorage.getItem(VL_MODEL_KEY)
   if (cached) return cached
   try {
-    const res = await fetch(`${AI_API_BASE}/models`, {
+    const res = await fetch(`${getAiApiBase()}/models`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     })
     if (res.ok) {
@@ -281,7 +389,7 @@ export async function requestVisionCompletion(options: {
   prompt: string
   signal?: AbortSignal
 }): Promise<string> {
-  const response = await fetch(`${AI_API_BASE}/chat/completions`, {
+  const response = await fetch(`${getAiApiBase()}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

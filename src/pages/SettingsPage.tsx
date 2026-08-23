@@ -35,12 +35,18 @@ import {
 } from '@/components/ui/dialog'
 import { exportBackup, parseBackup, importBackup, type BackupFile } from '@/utils/backup'
 import {
+  getAiProfiles,
+  getActiveAiProfileId,
+  type AiProfileId,
+} from '@/utils/aiChat'
+import { ApiKeyDialog } from '@/components/mermaid/ApiKeyDialog'
+import {
   GitHubLoginDialog,
   SyncStatusPanel,
   SyncSettingsPanel,
   SyncQueuePanel,
 } from '@/components/sync'
-import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug, Download, Upload } from 'lucide-react'
+import { RotateCcw, Github, LogOut, CheckCircle2, AlertCircle, RefreshCw, Database, Copy, FolderOpen, Unplug, Download, Upload, Sparkles } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import type { LayoutType } from '@/types'
 
@@ -265,6 +271,16 @@ export function SettingsPage() {
                 onCheckedChange={(v) => updateSettings({ showThumbnails: v })}
               />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>AI 服务</CardTitle>
+            <CardDescription>千问云端点与 Key（Token 套餐 / API 按量付费双方案）</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AiServiceCard />
           </CardContent>
         </Card>
 
@@ -647,5 +663,52 @@ function BackupCard() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+// ─── AI 服务卡片 ─────────────────────────────────────────────
+
+function AiServiceCard() {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  // 弹窗关闭后重新读取，保证展示与存储一致
+  const [, bump] = useState(0)
+  const profiles = getAiProfiles()
+  const activeId = getActiveAiProfileId()
+  const active = profiles[activeId]
+
+  const maskKey = (key: string) =>
+    key ? `${key.slice(0, 6)}…${key.slice(-4)}` : '未配置'
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            {active.name}
+            <span className="text-[10px] text-primary border border-primary/40 rounded px-1.5 py-0.5">
+              使用中
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1 truncate font-mono" title={active.baseUrl}>
+            {active.baseUrl}
+          </p>
+          <p className="text-xs text-muted-foreground font-mono">Key：{maskKey(active.apiKey)}</p>
+          {profiles[(activeId === 'token-plan' ? 'api-payg' : 'token-plan') as AiProfileId].apiKey && (
+            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+              另一方案已配置 Key，可在面板内一键切换
+            </p>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setDialogOpen(true)}
+        >
+          配置
+        </Button>
+      </div>
+      <ApiKeyDialog open={dialogOpen} onOpenChange={(v) => { setDialogOpen(v); bump((n) => n + 1) }} />
+    </>
   )
 }
