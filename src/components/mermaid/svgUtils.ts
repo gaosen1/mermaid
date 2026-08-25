@@ -140,8 +140,16 @@ export function setupSvgNodeInteraction(svg: SVGSVGElement): void {
 }
 
 /**
+ * mermaid 会给渲染产物的元素 id 拼上渲染容器前缀
+ * （如 mermaid-render-<ts>-<rand>-flowchart-W1-0），剥离后才是源码中的 id
+ */
+export function stripRenderIdPrefix(id: string): string {
+  return id.replace(/^mermaid-(?:render|export)-\d+-[a-z0-9]+-/, '')
+}
+
+/**
  * 从 SVG 元素提取节点 ID
- * Mermaid 生成的节点 ID 格式: flowchart-{nodeId}-{index}
+ * Mermaid 生成的节点 ID 格式: flowchart-{nodeId}-{index}（可能带渲染容器前缀）
  */
 export function getNodeIdFromElement(element: Element): string | null {
   // 向上查找 g.node 元素
@@ -151,8 +159,8 @@ export function getNodeIdFromElement(element: Element): string | null {
   const id = nodeGroup.getAttribute('id')
   if (!id) return null
 
-  // 匹配 flowchart-{nodeId}-{index} 格式
-  const match = id.match(/^flowchart-(.+?)-\d+$/)
+  // 剥离渲染容器前缀后匹配 flowchart-{nodeId}-{index} 格式
+  const match = stripRenderIdPrefix(id).match(/^flowchart-(.+?)-\d+$/)
   return match ? match[1] : null
 }
 
@@ -168,9 +176,8 @@ export function getSubgraphIdFromElement(element: Element): string | null {
   const id = clusterGroup.getAttribute('id')
   if (!id) return null
 
-  // mermaid 会给 cluster id 拼上渲染容器前缀（如 mermaid-render-<ts>-<rand>-SG1），
-  // 剥离后才能与源码中的 subgraph id 匹配，否则样式/改名写回全部失效
-  return id.replace(/^mermaid-(?:render|export)-\d+-[a-z0-9]+-/, '')
+  // cluster id 带渲染容器前缀，剥离后才能与源码中的 subgraph id 匹配
+  return stripRenderIdPrefix(id)
 }
 
 /**

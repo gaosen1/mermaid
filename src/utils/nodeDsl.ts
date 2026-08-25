@@ -240,7 +240,8 @@ export function updateSourceWithNodeShape(
   if (!nodeInfo) return source
 
   const syntax = SHAPE_SYNTAX[shape]
-  const newNodeDef = `${nodeId}${syntax.open}${nodeInfo.text}${syntax.close}`
+  // 重建定义时保留原有 @{...} 样式 DSL，避免改形状丢样式
+  const newNodeDef = `${nodeId}${nodeInfo.dsl}${syntax.open}${nodeInfo.text}${syntax.close}`
 
   const lines = source.split('\n')
   lines[nodeInfo.lineIndex] = lines[nodeInfo.lineIndex].replace(nodeInfo.fullMatch, newNodeDef)
@@ -284,7 +285,8 @@ export function updateSourceWithNodeText(source: string, nodeId: string, text: s
   // 使用双引号包裹文字，避免特殊字符导致语法错误
   // 同时需要转义文字中的双引号
   const quotedText = `"${escapedText.replace(/"/g, '#quot;')}"`
-  const newNodeDef = `${nodeId}${nodeInfo.open}${quotedText}${nodeInfo.close}`
+  // 重建定义时保留原有 @{...} 样式 DSL，避免改名丢样式
+  const newNodeDef = `${nodeId}${nodeInfo.dsl}${nodeInfo.open}${quotedText}${nodeInfo.close}`
 
   const lines = source.split('\n')
   lines[nodeInfo.lineIndex] = lines[nodeInfo.lineIndex].replace(nodeInfo.fullMatch, newNodeDef)
@@ -307,6 +309,8 @@ export function mergeNodeStyle(existing: NodeStyle, updates: Partial<NodeStyle>)
 interface NodeDefinition {
   nodeId: string
   text: string
+  /** 节点自定义样式 DSL（`@{...}`），无样式时为空串；重建定义时必须保留 */
+  dsl: string
   open: string
   close: string
   fullMatch: string
@@ -341,22 +345,24 @@ function findNodeDefinition(source: string, nodeId: string): NodeDefinition | nu
     const line = lines[lineIndex]
 
     for (const pattern of patterns) {
-      // 构建匹配特定 nodeId 的正则
+      // 构建匹配特定 nodeId 的正则；nodeId 与形状括号之间可能存在 @{...} 自定义样式 DSL
       const fullRegex = new RegExp(
-        `(?:^|\\s|;)${escapeRegex(nodeId)}${pattern.regex.source.replace('(.+?)', '(.+?)')}`,
+        `(?:^|\\s|;)${escapeRegex(nodeId)}(@\\{[^}]*\\})?${pattern.regex.source}`,
         'g'
       )
 
       let match
       while ((match = fullRegex.exec(line)) !== null) {
-        const text = match[1]
-        const fullMatch = `${nodeId}${pattern.open}${text}${pattern.close}`
+        const dsl = match[1] || ''
+        const text = match[2]
+        const fullMatch = `${nodeId}${dsl}${pattern.open}${text}${pattern.close}`
 
         // 验证完整匹配存在于原行中
         if (line.includes(fullMatch)) {
           return {
             nodeId,
             text,
+            dsl,
             open: pattern.open,
             close: pattern.close,
             fullMatch,

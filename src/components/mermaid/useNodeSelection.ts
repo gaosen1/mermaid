@@ -270,7 +270,11 @@ export function useNodeSelection({
           (c) => getSubgraphIdFromElement(c) === nodeId
         ) as SVGGElement | null) ?? null
     } else {
-      nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`) as SVGGElement | null
+      // 节点 id 带渲染容器前缀，用剥离后的 id 匹配
+      nodeGroup =
+        (Array.from(svg.querySelectorAll('g.node')).find(
+          (n) => getNodeIdFromElement(n) === nodeId
+        ) as SVGGElement | null) ?? null
     }
 
     if (nodeGroup) {

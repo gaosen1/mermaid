@@ -7,6 +7,7 @@
 import type { EdgeStyle } from '@/utils/edgeDsl'
 import type { NodeStyle, SubgraphStyle } from '@/utils/nodeDsl'
 import type { SequenceParticipantStyle } from '@/utils/sequenceDsl'
+import { stripRenderIdPrefix } from './svgUtils'
 
 export type { NodeStyle, SubgraphStyle }
 
@@ -154,8 +155,11 @@ export function findNodeElement(
   svg: SVGSVGElement,
   nodeId: string
 ): { group: SVGGElement | null; shape: SVGElement | null; labelSpan: HTMLSpanElement | null } {
-  // Mermaid 节点结构: g.node[id="flowchart-{nodeId}-xxx"]
-  const nodeGroup = svg.querySelector(`g.node[id^="flowchart-${nodeId}-"]`)
+  // Mermaid 节点结构: g.node[id="<渲染容器前缀>flowchart-{nodeId}-xxx"]，按剥离后的 id 匹配
+  const nodeGroup =
+    (Array.from(svg.querySelectorAll('g.node')).find((n) =>
+      stripRenderIdPrefix(n.getAttribute('id') ?? '').startsWith(`flowchart-${nodeId}-`)
+    ) as SVGGElement | null) ?? null
   if (!nodeGroup) return { group: null, shape: null, labelSpan: null }
 
   // 形状元素: rect, polygon, circle, ellipse
