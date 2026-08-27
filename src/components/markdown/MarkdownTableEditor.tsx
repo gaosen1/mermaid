@@ -279,7 +279,9 @@ export function MarkdownTableEditor({
       e.preventDefault()
     }
 
-    const handleDblClick = () => {
+    const handleDblClick = (e: MouseEvent) => {
+      // 连续点击缩放控件（按钮）会触发双击冒泡，不能误触「重置视图」
+      if ((e.target as Element).closest('button')) return
       const next: CanvasState = { scale: 1, offsetX: 0, offsetY: 0 }
       setCanvasState(next)
       saveCanvasState(diagramId, next)
