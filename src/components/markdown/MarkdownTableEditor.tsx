@@ -279,20 +279,11 @@ export function MarkdownTableEditor({
       e.preventDefault()
     }
 
-    const handleDblClick = (e: MouseEvent) => {
-      // 连续点击缩放控件（按钮）会触发双击冒泡，不能误触「重置视图」
-      if ((e.target as Element).closest('button')) return
-      const next: CanvasState = { scale: 1, offsetX: 0, offsetY: 0 }
-      setCanvasState(next)
-      saveCanvasState(diagramId, next)
-    }
-
     preview.addEventListener('wheel', handleWheel, { passive: false })
     preview.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
     preview.addEventListener('contextmenu', handleContextMenu)
-    preview.addEventListener('dblclick', handleDblClick)
     const unguardGesture = bindGestureGuard(preview)
 
     return () => {
@@ -301,7 +292,6 @@ export function MarkdownTableEditor({
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       preview.removeEventListener('contextmenu', handleContextMenu)
-      preview.removeEventListener('dblclick', handleDblClick)
       unguardGesture()
     }
   }, [diagramId])
@@ -526,7 +516,6 @@ export function MarkdownTableEditor({
           <div>{getWheelMode() === 'zoom' ? '🖱️ 滚轮: 缩放' : '🖱️ 滚轮/双指: 平移'}</div>
           <div>🤏 捏合/Ctrl+滚轮: 缩放</div>
           <div>🖱️ 右键拖拽: 移动</div>
-          <div>🖱️ 双击: 重置视图</div>
         </div>
 
         <div className="absolute top-2 right-2 flex items-center gap-1 z-10">

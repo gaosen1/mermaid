@@ -137,12 +137,8 @@ export function useViewTransform({
   }, [containerRef, wrapperRef, diagramId])
 
   const resetView = useCallback(() => {
-    setScale(1)
-    setPosition({ x: 0, y: 0 })
-    // 重置时重新计算 fit（不恢复保存状态，isReadyRef 已为 true 故不会触发恢复）
-    requestAnimationFrame(() => {
-      requestAnimationFrame(fitToContainer)
-    })
+    // 直接适配容器；不先跳 100% 再 fit，避免中间帧闪烁
+    fitToContainer()
   }, [fitToContainer])
 
   const handleWheel = useCallback((e: WheelEvent) => {

@@ -524,12 +524,6 @@ export const MermaidRenderer = forwardRef<MermaidRendererRef, MermaidRendererPro
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu}
-          onDoubleClick={(e) => {
-            // 双击空白处重置视图；节点/连线上的双击交给选中/编辑逻辑
-            const target = e.target as Element
-            if (target.closest('.node, .cluster, .edgePath, .edgeLabel, .label')) return
-            resetView()
-          }}
           style={{ cursor: isDragging ? 'grabbing' : spaceDown ? 'grab' : 'default' }}
         >
           <div
