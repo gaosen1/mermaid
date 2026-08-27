@@ -2,7 +2,8 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useSta
 import { saveAs } from 'file-saver'
 import { Button } from '@/components/ui/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { bindGestureGuard, computeWheelTransform, zoomViewState } from '@/utils/canvasGesture'
 
 export interface HtmlRendererRef {
   exportPng: () => Promise<void>
@@ -19,9 +20,50 @@ interface HtmlRendererProps {
 export const HtmlRenderer = forwardRef<HtmlRendererRef, HtmlRendererProps>(
   ({ source, className = '', showControls = true, fileName = 'diagram' }, ref) => {
     const iframeRef = useRef<HTMLIFrameElement>(null)
+    const wrapperRef = useRef<HTMLDivElement>(null)
     const [reloadKey, setReloadKey] = useState(0)
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    // 预览缩放/平移（iframe 会吞掉其区域内的滚轮事件，缩放主要靠控件）
+    const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
+
+    const zoomBy = useCallback((factor: number) => {
+      const el = wrapperRef.current
+      if (!el) return
+      setView((prev) =>
+        zoomViewState(
+          prev,
+          { x: el.clientWidth / 2, y: el.clientHeight / 2 },
+          factor,
+          { minScale: MIN_SCALE, maxScale: MAX_SCALE }
+        )
+      )
+    }, [])
+
+    const resetView = useCallback(() => setView({ scale: 1, x: 0, y: 0 }), [])
+
+    useEffect(() => {
+      const el = wrapperRef.current
+      if (!el) return
+      const handleWheel = (e: WheelEvent) => {
+        e.preventDefault()
+        const rect = el.getBoundingClientRect()
+        setView((prev) =>
+          computeWheelTransform(
+            e,
+            { x: e.clientX - rect.left, y: e.clientY - rect.top },
+            prev,
+            { minScale: MIN_SCALE, maxScale: MAX_SCALE }
+          )
+        )
+      }
+      el.addEventListener('wheel', handleWheel, { passive: false })
+      const unbindGuard = bindGestureGuard(el)
+      return () => {
+        el.removeEventListener('wheel', handleWheel)
+        unbindGuard()
+      }
+    }, [])
 
     const reload = useCallback(() => {
       setLoading(true)
@@ -129,15 +171,45 @@ export const HtmlRenderer = forwardRef<HtmlRendererRef, HtmlRendererProps>(
     return (
       <div className={`relative h-full w-full ${className}`}>
         {showControls && (
-          <div className="absolute top-2 right-2 z-10">
+          <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+            <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
+              {Math.round(view.scale * 100)}%
+            </span>
             <Button
               variant="outline"
-              size="sm"
+              size="icon"
+              className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+              onClick={() => zoomBy(1 / 1.2)}
+              title="缩小"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+              onClick={() => zoomBy(1.2)}
+              title="放大"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 bg-background/80 backdrop-blur-sm"
+              onClick={resetView}
+              title="重置视图"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 bg-background/80 backdrop-blur-sm"
               onClick={reload}
               title="重新加载预览"
-              className="bg-background/80 backdrop-blur-sm"
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="h-3.5 w-3.5" />
             </Button>
           </div>
         )}
@@ -153,16 +225,21 @@ export const HtmlRenderer = forwardRef<HtmlRendererRef, HtmlRendererProps>(
 
         {error && <ErrorAlert error={error} />}
 
-        <div className="absolute inset-0 overflow-auto rounded-lg bg-white shadow-inner">
-          <iframe
-            key={reloadKey}
-            ref={iframeRef}
-            title="HTML Diagram Preview"
-            srcDoc={source}
-            sandbox="allow-same-origin"
-            className="h-full w-full border-0 bg-white"
-            onLoad={handleLoad}
-          />
+        <div ref={wrapperRef} className="absolute inset-0 overflow-auto rounded-lg bg-white shadow-inner">
+          <div
+            className="h-full w-full origin-top-left"
+            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }}
+          >
+            <iframe
+              key={reloadKey}
+              ref={iframeRef}
+              title="HTML Diagram Preview"
+              srcDoc={source}
+              sandbox="allow-same-origin"
+              className="h-full w-full border-0 bg-white"
+              onLoad={handleLoad}
+            />
+          </div>
         </div>
       </div>
     )
@@ -170,6 +247,9 @@ export const HtmlRenderer = forwardRef<HtmlRendererRef, HtmlRendererProps>(
 )
 
 HtmlRenderer.displayName = 'HtmlRenderer'
+
+const MIN_SCALE = 0.1
+const MAX_SCALE = 5
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

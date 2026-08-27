@@ -527,7 +527,7 @@ export function MarkdownTableEditor({
           <div>🖱️ 双击: 重置视图</div>
         </div>
 
-        <div className="absolute bottom-2 right-2 flex items-center gap-1">
+        <div className="absolute top-2 right-2 flex items-center gap-1 z-10">
           <span className="text-xs text-muted-foreground bg-background/80 backdrop-blur rounded px-1.5 py-0.5 select-none">
             {Math.round(canvasState.scale * 100)}%
           </span>
