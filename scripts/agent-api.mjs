@@ -19,8 +19,9 @@
  *   GET /api/diagrams                     图表清单（?days=7 | ?from&to | ?project= 名称过滤）
  *   GET /api/diagrams/:id                 单个图表元数据
  *   GET /api/diagrams/:id/assets/:kind    产物文件（source|standard|svg|png|portable）
- *   POST /api/diagrams                    写回笔记（写入 inbox/，Web 应用下次同步时导入）
+ *   POST /api/diagrams                    写回笔记（写入 inbox/，并经 SSE 通知已连接的 Web 应用立即导入）
  *     body: { name, type: mermaid|markdown|txt, source, projectName? }
+ *   GET  /api/events?token=<token>        SSE 推送（仅限本机 + 本机来源的页面）：inbox 有新笔记时发 `inbox` 事件
  *   ANY /api/ai-proxy/*                   AI 端点 CORS 代理（仅限本机）：转发到
  *     X-Target-Base 头指定的端点，供浏览器调用不支持 CORS 的端点（如 Token 套餐）
  */
@@ -102,17 +103,33 @@ function getOrIssueToken(issue) {
   return fresh
 }
 
-function checkBearer(req) {
-  const header = req.headers.authorization || ''
-  const match = header.match(/^Bearer\s+(.+)$/i)
-  if (!match) return { ok: false, code: 401, error: '缺少 Authorization: Bearer <token>' }
+function verifyToken(token) {
   const auth = loadAuth()
   if (!auth) return { ok: false, code: 401, error: '服务端尚未签发 token，请先调用 GET /api/auth/token' }
   if (Date.now() > auth.expiresAt) {
     return { ok: false, code: 401, error: 'token 已过期，请重新调用 GET /api/auth/token' }
   }
-  if (match[1] !== auth.token) return { ok: false, code: 401, error: 'token 无效' }
+  if (token !== auth.token) return { ok: false, code: 401, error: 'token 无效' }
   return { ok: true }
+}
+
+function checkBearer(req) {
+  const header = req.headers.authorization || ''
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  if (!match) return { ok: false, code: 401, error: '缺少 Authorization: Bearer <token>' }
+  return verifyToken(match[1])
+}
+
+// ─── SSE 推送 ────────────────────────────────────────────────────────────────
+// 笔记仍先落盘到 inbox/（持久队列：页面没开时不会丢，下次打开照样导入），
+// SSE 只是「叫醒」页面去导入，所以页面不需要轮询。
+
+const sseClients = new Set()
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
+
+function broadcast(event, data) {
+  const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+  for (const res of sseClients) res.write(frame)
 }
 
 // ─── 数据读取 ────────────────────────────────────────────────────────────────
@@ -150,6 +167,25 @@ const server = http.createServer((req, res) => {
     if (!isLocal(req)) return sendJson(res, 403, { error: 'token 接口仅限本机调用' })
     const auth = getOrIssueToken(true)
     return sendJson(res, 200, auth)
+  }
+
+  // SSE 推送：EventSource 无法带自定义头，token 走查询参数（仅限本机来源）
+  if (url.pathname === '/api/events' && req.method === 'GET') {
+    if (!isLocal(req)) return sendJson(res, 403, { error: '推送接口仅限本机调用' })
+    const authResult = verifyToken(url.searchParams.get('token') || '')
+    if (!authResult.ok) return sendJson(res, authResult.code, { error: authResult.error })
+    const headers = {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    }
+    const origin = req.headers.origin
+    if (origin && LOCAL_ORIGIN.test(origin)) headers['Access-Control-Allow-Origin'] = origin
+    res.writeHead(200, headers)
+    res.write(': connected\n\n')
+    sseClients.add(res)
+    req.on('close', () => sseClients.delete(res))
+    return undefined
   }
 
   // AI 端点 CORS 代理：部分端点（如 Token 套餐）不返回 CORS 头，
@@ -234,7 +270,12 @@ const server = http.createServer((req, res) => {
         const inbox = path.join(DIR, 'inbox')
         fs.mkdirSync(inbox, { recursive: true })
         fs.writeFileSync(path.join(inbox, `${crypto.randomUUID()}.json`), JSON.stringify(payload))
-        return sendJson(res, 202, { ok: true, note: '已写入 inbox，Web 应用下次同步时导入' })
+        broadcast('inbox', { name: payload.name })
+        return sendJson(res, 202, {
+          ok: true,
+          note: '已写入 inbox；Web 应用已连接时立即导入，否则下次打开时导入',
+          notified: sseClients.size,
+        })
       } catch {
         return sendJson(res, 400, { error: 'body 不是合法 JSON' })
       }
@@ -315,6 +356,8 @@ const server = http.createServer((req, res) => {
 })
 
 server.listen(PORT, '127.0.0.1', () => {
+  // 启动即签发 token：Web 应用通过同步目录里的 auth.json 取它来订阅推送
+  getOrIssueToken(true)
   console.log(`[agent-api] listening on http://127.0.0.1:${PORT}`)
   console.log(`[agent-api] sync dir: ${DIR}`)
   console.log('[agent-api] 获取 token: curl http://127.0.0.1:' + PORT + '/api/auth/token')

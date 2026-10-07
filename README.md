@@ -47,6 +47,23 @@ npm run dev
 - `snapshots`: 版本快照
 - `settings`: 用户设置
 
+## 本地 Agent 同步与导入
+
+`pnpm dev` / `pnpm preview` 会自动一并启动 `scripts/agent-api.mjs`（本地 REST 服务，默认端口 4789），
+无需单独运行 node 命令。外部工具（如 mermaid MCP App 的「→ Mermaid Local」按钮）通过它的
+`POST /api/diagrams` 把笔记写入同步目录的 `inbox/`（持久队列，页面没开也不会丢），并通过 SSE
+（`GET /api/events`）推送给已连接的页面，页面收到事件后立即导入到 IndexedDB（项目不存在会自动创建）。
+页面没开时，笔记留在 `inbox/`，下次打开页面时导入。没有任何定时轮询。
+
+**同步目录必须与 Web 应用里「本地 Agent 同步」选的目录是同一个**（浏览器里的授权句柄，服务端无从得知）。
+在项目根目录的 `.env.local`（已被 gitignore）里设置一次：
+
+```
+MERMAID_SYNC_DIR=/绝对路径/到/你选的同步目录
+```
+
+不设置则使用默认目录 `~/mermaid-agent-sync`。端口可用 `MERMAID_API_PORT` 修改。
+
 ## 配置说明
 
 ### 默认设置
