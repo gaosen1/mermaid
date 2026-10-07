@@ -7,6 +7,9 @@ import { applyEdgeStyle } from '@/components/mermaid/svgStyleApplier'
 import { toStandardMermaid, toPortableMarkdown } from './portable'
 import { getDiagramFileExtension } from './diagram'
 import { cropSvgToContentBBox } from './svgCrop'
+import { hasPendingInbox } from './agentInbox'
+import { createInboxPushClient, type InboxPushClient } from './agentInboxPush'
+import { createCoalescedRunner } from './coalesce'
 import type { Diagram, DiagramFolder, Project } from '@/types'
 
 /** REST API 写回（inbox）摄取完成后派发，供 UI 刷新列表 */
@@ -109,6 +112,7 @@ export async function pickAgentSyncDir(): Promise<void> {
 }
 
 export async function disconnectAgentSync(): Promise<void> {
+  stopInboxPush()
   await db.kv.delete(KV_KEY)
   setStatus({ connected: false, dirName: null, needsPermission: false })
 }
@@ -247,6 +251,44 @@ export function scheduleAgentSync(): void {
   }, 2000)
 }
 
+// ─── inbox 推送 ──────────────────────────────────────────────────────────────
+// 摄取只发生在 syncNow() 里，而 syncNow 只在启动 / 授权 / 本地数据变更时触发。
+// 外部（REST API、mermaid MCP App 的「→ Mermaid Local」）往 inbox/ 写文件并不会
+// 改动 IndexedDB，所以页面订阅 agent-api 的 SSE：有新笔记时它推 `inbox` 事件，
+// 页面再走一次同步。导入是低频操作，这里没有任何定时轮询。
+
+let pushClient: InboxPushClient | null = null
+
+async function importPendingInbox(): Promise<void> {
+  if (!status.connected || status.needsPermission) return
+  const handle = await loadHandle()
+  if (!handle) return
+  try {
+    if (await hasPendingInbox(handle)) await syncNow()
+  } catch (err) {
+    console.warn('[agent-sync] 导入 inbox 失败:', err)
+  }
+}
+
+/** 幂等：已授权且已连接同步目录时建立推送订阅 */
+async function ensureInboxPush(): Promise<void> {
+  if (pushClient || !status.connected || status.needsPermission) return
+  pushClient = createInboxPushClient({
+    getUrl: async () => {
+      const auth = await readAgentAuthToken()
+      return auth
+        ? `http://127.0.0.1:${AGENT_API_DEFAULT_PORT}/api/events?token=${encodeURIComponent(auth.token)}`
+        : null
+    },
+    onInbox: () => void importPendingInbox(),
+  })
+}
+
+function stopInboxPush(): void {
+  pushClient?.close()
+  pushClient = null
+}
+
 // ─── 同步主体 ────────────────────────────────────────────────────────────────
 
 function hashString(input: string): string {
@@ -376,13 +418,21 @@ export async function readAgentAuthToken(): Promise<AgentAuthToken | null> {
   }
 }
 
-export async function syncNow(): Promise<void> {
-  if (!status.connected || status.syncing) return
+// 同步进行中又被触发（连续编辑、连续导入）时不能丢：合并成「跑完再补一轮」
+const runSync = createCoalescedRunner(syncOnce)
+
+export function syncNow(): Promise<void> {
+  return runSync()
+}
+
+async function syncOnce(): Promise<void> {
+  if (!status.connected) return
   const handle = await loadHandle()
   if (!handle) return
 
   setStatus({ syncing: true, lastError: null })
   try {
+    void ensureInboxPush()
     const inboxWarnings = await ingestInbox(handle)
     const [projects, diagrams, folders] = await Promise.all([
       db.projects.toArray(),
